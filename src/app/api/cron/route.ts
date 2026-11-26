@@ -1,0 +1,51 @@
+  import { NextRequest, NextResponse } from 'next/server';
+import { executeSelfCron, getSelfCronState } from '@/lib/selfCron';
+
+export const maxDuration = 120; // 120s max execution duration for multi-target crawl + retries
+export const dynamic = 'force-dynamic';
+
+/**
+ * Self-Hosted Cron API:
+ * GET /api/cron: Returns current self-cron scheduler status & upcoming runs
+ * GET /api/cron?run=true: Manually executes the self-cron audit run
+ * POST /api/cron: Manually triggers the self-cron audit run from the UI or external webhook
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const shouldRun = req.nextUrl.searchParams.get('run') === 'true' || 
+                      req.nextUrl.searchParams.get('trigger') === 'true';
+
+    if (shouldRun) {
+      console.log('[API /api/cron] Manual audit trigger requested via GET query parameter');
+      const result = await executeSelfCron('manual');
+      return NextResponse.json(result, { status: result.success ? 200 : 500 });
+    }
+
+    const cronState = getSelfCronState();
+    return NextResponse.json({
+      success: true,
+      isSelfCron: true,
+      status: cronState,
+    });
+  } catch (error: any) {
+    console.error('[API /api/cron] Error in GET handler:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Internal error checking cron status' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    console.log('[API /api/cron] Manual self-cron trigger requested via POST');
+    const result = await executeSelfCron('manual');
+    return NextResponse.json(result, { status: result.success ? 200 : 500 });
+  } catch (error: any) {
+    console.error('[API /api/cron] Error in POST handler:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Cron execution failed' },
+      { status: 500 }
+    );
+  }
+}
