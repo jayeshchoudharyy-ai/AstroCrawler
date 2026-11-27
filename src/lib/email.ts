@@ -124,7 +124,13 @@ export function generateEmailHtml(report: AuditReport): string {
         `;
       }
 
-      // 4. Clean, Simple Buttons Table
+      // 4. Only Buttons with Errors Table
+      const errorButtons = res.buttons.filter(
+        (btn) =>
+          btn.redirectStatus !== 'MATCH' &&
+          btn.redirectStatus !== 'SAME_PAGE_REDIRECTION'
+      );
+
       let buttonsContent = '';
       if (res.buttons.length === 0) {
         buttonsContent = `
@@ -132,44 +138,47 @@ export function generateEmailHtml(report: AuditReport): string {
             ℹ️ <strong>No button available</strong> on this page.
           </div>
         `;
+      } else if (errorButtons.length === 0) {
+        buttonsContent = `
+          <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #166534; margin-top: 10px;">
+            ✅ All ${res.buttons.length} button(s) verified with <strong>0 errors</strong>.
+          </div>
+        `;
       } else {
         buttonsContent = `
-          <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+          <div style="font-size: 12px; font-weight: 700; color: #9f1239; margin-top: 12px; margin-bottom: 4px;">
+            🚨 Buttons with Errors (${errorButtons.length} of ${res.buttons.length}):
+          </div>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px;">
             <thead>
-              <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: left;">
-                <th style="padding: 6px 8px; color: #475569;">Button Text</th>
-                <th style="padding: 6px 8px; color: #475569;">Destination URL</th>
-                <th style="padding: 6px 8px; color: #475569; text-align: center;">Status</th>
+              <tr style="background-color: #fff1f2; border-bottom: 1px solid #fecdd3; text-align: left;">
+                <th style="padding: 6px 8px; color: #9f1239;">Button Text</th>
+                <th style="padding: 6px 8px; color: #9f1239;">Destination URL</th>
+                <th style="padding: 6px 8px; color: #9f1239; text-align: center;">Error Status</th>
               </tr>
             </thead>
             <tbody>
-              ${res.buttons
+              ${errorButtons
                 .map((btn) => {
                   let badge = '';
-                  let rowBg = '#ffffff';
+                  let rowBg = '#fff1f2';
 
-                  if (btn.redirectStatus === 'MATCH') {
-                    badge = '<span style="background-color: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">MATCH</span>';
-                  } else if (btn.redirectStatus === 'SAME_PAGE_REDIRECTION') {
-                    badge = '<span style="background-color: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">SAME PAGE</span>';
-                  } else if (btn.redirectStatus === 'DIFFERENT_PAYMENT_URL') {
+                  if (btn.redirectStatus === 'DIFFERENT_PAYMENT_URL') {
                     badge = '<span style="background-color: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">DIFF URL</span>';
                     rowBg = '#fffbeb';
                   } else if (btn.redirectStatus === 'WRONG_DOMAIN') {
                     badge = '<span style="background-color: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">WRONG DOMAIN</span>';
-                    rowBg = '#fff1f2';
                   } else {
                     badge = '<span style="background-color: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">FAILED</span>';
-                    rowBg = '#fff1f2';
                   }
 
                   return `
-                    <tr style="border-bottom: 1px solid #f1f5f9; background-color: ${rowBg};">
+                    <tr style="border-bottom: 1px solid #fecdd3; background-color: ${rowBg};">
                       <td style="padding: 6px 8px; font-weight: 500; color: #0f172a; max-width: 180px;">
                         ${btn.text || '[Unnamed button]'}
                       </td>
                       <td style="padding: 6px 8px; font-family: monospace; font-size: 11px; word-break: break-all; max-width: 320px;">
-                        <a href="${btn.redirectedUrl || btn.targetUrl}" target="_blank" style="color: ${btn.isRazorpayMatch ? '#0284c7' : '#e11d48'}; text-decoration: none;">
+                        <a href="${btn.redirectedUrl || btn.targetUrl}" target="_blank" style="color: #e11d48; text-decoration: none;">
                           ${btn.redirectedUrl || btn.targetUrl}
                         </a>
                       </td>
