@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileText,
   X,
+  Download,
 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { AuditReport, TargetPage } from '@/lib/types';
@@ -317,18 +318,33 @@ export default function TopHeader({
               </div>
 
               {/* Footer Action */}
-              {errorNotifications.length > 0 && onViewReports && (
-                <div className="border-t border-slate-100 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/50">
-                  <button
-                    onClick={() => {
-                      setIsNotifOpen(false);
-                      onViewReports();
-                    }}
-                    className="flex w-full items-center justify-center space-x-1.5 rounded-xl bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 transition"
+              {errorNotifications.length > 0 && (
+                <div className="border-t border-slate-100 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/50 flex flex-col gap-2">
+                  <a
+                    href={
+                      latestReport
+                        ? `/api/reports/pdf?reportId=${encodeURIComponent(latestReport.id)}`
+                        : '/api/reports/pdf'
+                    }
+                    download
+                    onClick={() => setIsNotifOpen(false)}
+                    className="flex w-full items-center justify-center space-x-1.5 rounded-xl bg-rose-600 py-2 text-xs font-bold text-white hover:bg-rose-500 transition"
                   >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>View Detailed Audit Reports</span>
-                  </button>
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download Error Report PDF</span>
+                  </a>
+                  {onViewReports && (
+                    <button
+                      onClick={() => {
+                        setIsNotifOpen(false);
+                        onViewReports();
+                      }}
+                      className="flex w-full items-center justify-center space-x-1.5 rounded-xl bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 transition"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>View Detailed Audit Reports</span>
+                    </button>
+                  )}
                 </div>
               )}
 
