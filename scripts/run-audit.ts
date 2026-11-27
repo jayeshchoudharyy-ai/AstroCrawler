@@ -80,9 +80,12 @@ ${rows}
 
 async function main() {
   const args = process.argv.slice(2);
-  const failOnError = args.includes('--fail-on-error');
+  const failOnError =
+    args.includes('--fail-on-error') || process.env.FAIL_ON_ERROR === 'true';
   const urlFlagIdx = args.indexOf('--url');
-  const singleUrl = urlFlagIdx !== -1 ? args[urlFlagIdx + 1] : undefined;
+  const singleUrl =
+    (urlFlagIdx !== -1 ? args[urlFlagIdx + 1] : undefined) ||
+    process.env.SINGLE_URL;
 
   console.log('======================================================');
   console.log('  AstroCrawler — Automated Audit Runner');

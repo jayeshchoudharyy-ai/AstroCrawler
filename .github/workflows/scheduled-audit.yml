@@ -44,15 +44,9 @@ jobs:
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
           MONITORED_URLS: ${{ secrets.MONITORED_URLS || vars.MONITORED_URLS }}
           DEFAULT_RAZORPAY_LINK: ${{ vars.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/' }}
-        run: |
-          ARGS=""
-          if [ -n "${{ inputs.single_url }}" ]; then
-            ARGS="$ARGS --url \"${{ inputs.single_url }}\""
-          fi
-          if [ "${{ inputs.fail_on_error }}" != "false" ]; then
-            ARGS="$ARGS --fail-on-error"
-          fi
-          eval npx tsx scripts/run-audit.ts $ARGS
+          SINGLE_URL: ${{ inputs.single_url }}
+          FAIL_ON_ERROR: ${{ inputs.fail_on_error != false }}
+        run: npx tsx scripts/run-audit.ts
 
       - name: Upload Audit Reports Artifact
         if: always()
