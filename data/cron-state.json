@@ -5,5 +5,14 @@
   "scheduleDescription": "Twice daily at 9:00 AM & 9:00 PM IST (Asia/Kolkata)",
   "isRunning": false,
   "nextRunIST": "Today at 9:00 PM IST",
-  "nextRunISO": "2026-11-27T15:30:00.000Z"
+  "nextRunISO": "2026-11-27T15:30:00.000Z",
+  "lastRunAt": "2026-11-27T06:05:52.147Z",
+  "lastTrigger": "cron",
+  "lastDurationMs": 54663,
+  "lastSummary": "PASS",
+  "lastTotalPages": 13,
+  "lastPassedPages": 13,
+  "lastFailedPages": 0,
+  "lastEmailSent": true,
+  "lastEmailRecipient": "jayeshchoudharyy@gmail.com"
 }
