@@ -3,8 +3,8 @@ import { getTargets, addTarget, updateTarget, deleteTarget, getSettings, saveSet
 
 export async function GET() {
   try {
-    const targets = getTargets();
-    const settings = getSettings();
+    const targets = await getTargets();
+    const settings = await getSettings();
     return NextResponse.json({ success: true, targets, settings });
   } catch (error: any) {
     return NextResponse.json(
@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const settings = getSettings();
-    const target = addTarget({
+    const settings = await getSettings();
+    const target = await addTarget({
       url: url.trim(),
       name: name?.trim() || new URL(url.trim()).hostname,
       expectedRazorpayLink: (expectedRazorpayLink || settings.defaultRazorpayLink).trim(),
@@ -59,7 +59,7 @@ export async function PUT(req: NextRequest) {
     const { id, updates, settings: newSettings } = body;
 
     if (newSettings) {
-      const updatedSettings = saveSettings(newSettings);
+      const updatedSettings = await saveSettings(newSettings);
       return NextResponse.json({ success: true, settings: updatedSettings });
     }
 
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Target ID required' }, { status: 400 });
     }
 
-    const updated = updateTarget(id, updates);
+    const updated = await updateTarget(id, updates);
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Target not found' }, { status: 404 });
     }
@@ -90,7 +90,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Target ID required' }, { status: 400 });
     }
 
-    const success = deleteTarget(id);
+    const success = await deleteTarget(id);
     return NextResponse.json({ success });
   } catch (error: any) {
     return NextResponse.json(

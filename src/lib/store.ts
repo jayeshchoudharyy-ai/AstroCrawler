@@ -1,11 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { TargetPage, AuditReport, AppSettings } from './types';
+import { TargetPage, AuditReport, AppSettings, SelfCronState } from './types';
+import { getAdminFirestore } from './firebaseAdmin';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const TARGETS_FILE = path.join(DATA_DIR, 'targets.json');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const CRON_STATE_FILE = path.join(DATA_DIR, 'cron-state.json');
 
 export const DEFAULT_SETTINGS: AppSettings = {
   recipientEmail: 'jayeshchoudharyy@gmail.com',
@@ -63,17 +65,22 @@ function ensureDirectoryExists() {
   }
 }
 
+export function getStorageBackend(): 'firebase' | 'local' {
+  return getAdminFirestore() ? 'firebase' : 'local';
+}
+
 /**
  * Reads any monitored URLs configured in environment variables (MONITORED_URLS or TARGET_URLS).
- * Supports comma, newline, or semicolon separated URLs.
- * Example in .env.local:
- *   MONITORED_URLS="https://grow.askpuran.com/, https://example.com"
  */
 export function getEnvTargets(): TargetPage[] {
-  const envRaw = process.env.MONITORED_URLS || process.env.TARGET_URLS || process.env.MONITORED_PAGES;
+  const envRaw =
+    process.env.MONITORED_URLS ||
+    process.env.TARGET_URLS ||
+    process.env.MONITORED_PAGES;
   if (!envRaw) return [];
 
-  const defaultRzp = process.env.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/';
+  const defaultRzp =
+    process.env.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/';
   const urlEntries = envRaw
     .split(/[\r\n,;]+/)
     .map((u) => u.trim())
@@ -105,7 +112,7 @@ export function getEnvTargets(): TargetPage[] {
   });
 }
 
-export function getTargets(): TargetPage[] {
+function readLocalTargets(): TargetPage[] {
   ensureDirectoryExists();
   const envTargets = getEnvTargets();
 
@@ -119,16 +126,20 @@ export function getTargets(): TargetPage[] {
     }
   }
 
-  // Automatically merge envTargets into storedTargets if not already present
   let hasMerged = false;
   for (const envT of envTargets) {
-    const existing = storedTargets.find((t) => t.url.toLowerCase() === envT.url.toLowerCase());
+    const existing = storedTargets.find(
+      (t) => t.url.toLowerCase() === envT.url.toLowerCase()
+    );
     if (!existing) {
       storedTargets.push(envT);
       hasMerged = true;
     } else {
       existing.isEnvConfigured = true;
-      if (existing.name === existing.url || existing.name === 'grow.askpuran.com') {
+      if (
+        existing.name === existing.url ||
+        existing.name === 'grow.askpuran.com'
+      ) {
         existing.name = envT.name;
         hasMerged = true;
       }
@@ -137,52 +148,156 @@ export function getTargets(): TargetPage[] {
 
   if (storedTargets.length === 0) {
     storedTargets = DEFAULT_TARGETS;
-    saveTargets(storedTargets);
+    writeLocalTargets(storedTargets);
     return storedTargets;
   }
 
   if (hasMerged) {
-    saveTargets(storedTargets);
+    writeLocalTargets(storedTargets);
   }
 
   return storedTargets;
 }
 
-export function saveTargets(targets: TargetPage[]) {
-  ensureDirectoryExists();
-  fs.writeFileSync(TARGETS_FILE, JSON.stringify(targets, null, 2), 'utf-8');
+function writeLocalTargets(targets: TargetPage[]) {
+  try {
+    ensureDirectoryExists();
+    fs.writeFileSync(TARGETS_FILE, JSON.stringify(targets, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write local targets.json:', err);
+  }
 }
 
-export function addTarget(target: Omit<TargetPage, 'id' | 'createdAt'>): TargetPage {
-  const targets = getTargets();
+export async function getTargets(): Promise<TargetPage[]> {
+  const db = getAdminFirestore();
+  if (!db) {
+    return readLocalTargets();
+  }
+
+  try {
+    const snap = await db.collection('targets').get();
+    let targets: TargetPage[] = snap.docs.map((d) => d.data() as TargetPage);
+
+    // Seed Firestore from local targets.json / .env if empty
+    if (targets.length === 0) {
+      targets = readLocalTargets();
+      if (targets.length > 0) {
+        const batch = db.batch();
+        for (const t of targets) {
+          batch.set(db.collection('targets').doc(t.id), t);
+        }
+        await batch.commit();
+      }
+      return targets;
+    }
+
+    // Merge any new envTargets into Firestore
+    const envTargets = getEnvTargets();
+    const batch = db.batch();
+    let hasNew = false;
+    for (const envT of envTargets) {
+      const existing = targets.find(
+        (t) => t.url.toLowerCase() === envT.url.toLowerCase()
+      );
+      if (!existing) {
+        targets.push(envT);
+        batch.set(db.collection('targets').doc(envT.id), envT);
+        hasNew = true;
+      }
+    }
+    if (hasNew) {
+      await batch.commit();
+    }
+
+    return targets.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  } catch (err) {
+    console.error('[Firestore] Error reading targets, falling back to local:', err);
+    return readLocalTargets();
+  }
+}
+
+export async function saveTargets(targets: TargetPage[]): Promise<void> {
+  writeLocalTargets(targets);
+  const db = getAdminFirestore();
+  if (!db) return;
+
+  const batch = db.batch();
+  for (const t of targets) {
+    batch.set(db.collection('targets').doc(t.id), t);
+  }
+  await batch.commit();
+}
+
+export async function addTarget(
+  target: Omit<TargetPage, 'id' | 'createdAt'>
+): Promise<TargetPage> {
   const newTarget: TargetPage = {
     ...target,
     id: `target-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     createdAt: new Date().toISOString(),
   };
-  targets.push(newTarget);
-  saveTargets(targets);
+
+  const db = getAdminFirestore();
+  if (db) {
+    await db.collection('targets').doc(newTarget.id).set(newTarget);
+  }
+
+  const local = readLocalTargets();
+  local.push(newTarget);
+  writeLocalTargets(local);
+
   return newTarget;
 }
 
-export function updateTarget(id: string, updates: Partial<TargetPage>): TargetPage | null {
-  const targets = getTargets();
+export async function updateTarget(
+  id: string,
+  updates: Partial<TargetPage>
+): Promise<TargetPage | null> {
+  const db = getAdminFirestore();
+  if (db) {
+    const docRef = db.collection('targets').doc(id);
+    const snap = await docRef.get();
+    if (!snap.exists) return null;
+    const updated = { ...(snap.data() as TargetPage), ...updates };
+    await docRef.set(updated, { merge: true });
+
+    // Keep local mirror in sync if available
+    try {
+      const local = readLocalTargets();
+      const idx = local.findIndex((t) => t.id === id);
+      if (idx !== -1) {
+        local[idx] = updated;
+        writeLocalTargets(local);
+      }
+    } catch {}
+
+    return updated;
+  }
+
+  const targets = readLocalTargets();
   const index = targets.findIndex((t) => t.id === id);
   if (index === -1) return null;
   targets[index] = { ...targets[index], ...updates };
-  saveTargets(targets);
+  writeLocalTargets(targets);
   return targets[index];
 }
 
-export function deleteTarget(id: string): boolean {
-  const targets = getTargets();
+export async function deleteTarget(id: string): Promise<boolean> {
+  const db = getAdminFirestore();
+  if (db) {
+    await db.collection('targets').doc(id).delete();
+  }
+
+  const targets = readLocalTargets();
   const filtered = targets.filter((t) => t.id !== id);
-  if (filtered.length === targets.length) return false;
-  saveTargets(filtered);
-  return true;
+  const removedLocally = filtered.length < targets.length;
+  if (removedLocally) {
+    writeLocalTargets(filtered);
+  }
+  return db ? true : removedLocally;
 }
 
-export function getReports(): AuditReport[] {
+function readLocalReports(): AuditReport[] {
   ensureDirectoryExists();
   if (!fs.existsSync(REPORTS_FILE)) {
     return [];
@@ -190,27 +305,73 @@ export function getReports(): AuditReport[] {
   try {
     const data = fs.readFileSync(REPORTS_FILE, 'utf-8');
     const reports: AuditReport[] = JSON.parse(data);
-    return reports.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return reports.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
   } catch (err) {
     console.error('Error reading reports:', err);
     return [];
   }
 }
 
-export function saveReport(report: AuditReport) {
-  ensureDirectoryExists();
-  const reports = getReports();
-  // Keep the latest 50 reports to prevent unbounded file growth
-  const updated = [report, ...reports].slice(0, 50);
-  fs.writeFileSync(REPORTS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+export async function getReports(): Promise<AuditReport[]> {
+  const db = getAdminFirestore();
+  if (!db) {
+    return readLocalReports();
+  }
+
+  try {
+    const snap = await db
+      .collection('reports')
+      .orderBy('timestamp', 'desc')
+      .limit(50)
+      .get();
+
+    if (snap.empty) {
+      const local = readLocalReports();
+      if (local.length > 0) {
+        const batch = db.batch();
+        for (const r of local.slice(0, 25)) {
+          batch.set(db.collection('reports').doc(r.id), r);
+        }
+        await batch.commit();
+      }
+      return local;
+    }
+
+    return snap.docs.map((d) => d.data() as AuditReport);
+  } catch (err) {
+    console.error('[Firestore] Error reading reports, falling back to local:', err);
+    return readLocalReports();
+  }
 }
 
-export function getSettings(): AppSettings {
+export async function saveReport(report: AuditReport): Promise<void> {
+  try {
+    ensureDirectoryExists();
+    const reports = readLocalReports();
+    const updated = [report, ...reports].slice(0, 50);
+    fs.writeFileSync(REPORTS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write local reports.json:', err);
+  }
+
+  const db = getAdminFirestore();
+  if (db) {
+    await db.collection('reports').doc(report.id).set(report);
+  }
+}
+
+function readLocalSettings(): AppSettings {
   ensureDirectoryExists();
   if (!fs.existsSync(SETTINGS_FILE)) {
-    // Write default settings directly without calling saveSettings to prevent recursion
     try {
-      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8');
+      fs.writeFileSync(
+        SETTINGS_FILE,
+        JSON.stringify(DEFAULT_SETTINGS, null, 2),
+        'utf-8'
+      );
     } catch (e) {
       console.error('Error writing default settings:', e);
     }
@@ -225,18 +386,85 @@ export function getSettings(): AppSettings {
   }
 }
 
-export function saveSettings(settings: Partial<AppSettings>): AppSettings {
-  ensureDirectoryExists();
-  let current: AppSettings = DEFAULT_SETTINGS;
-  if (fs.existsSync(SETTINGS_FILE)) {
+export async function getSettings(): Promise<AppSettings> {
+  const db = getAdminFirestore();
+  if (!db) {
+    return readLocalSettings();
+  }
+
+  try {
+    const doc = await db.collection('settings').doc('app').get();
+    if (!doc.exists) {
+      const local = readLocalSettings();
+      await db.collection('settings').doc('app').set(local);
+      return local;
+    }
+    return { ...DEFAULT_SETTINGS, ...(doc.data() as Partial<AppSettings>) };
+  } catch (err) {
+    console.error('[Firestore] Error reading settings, falling back to local:', err);
+    return readLocalSettings();
+  }
+}
+
+export async function saveSettings(
+  settings: Partial<AppSettings>
+): Promise<AppSettings> {
+  const current = await getSettings();
+  const updated: AppSettings = { ...current, ...settings };
+
+  try {
+    ensureDirectoryExists();
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write local settings.json:', err);
+  }
+
+  const db = getAdminFirestore();
+  if (db) {
+    await db.collection('settings').doc('app').set(updated, { merge: true });
+  }
+
+  return updated;
+}
+
+export async function getCronStateFromStore(): Promise<Partial<SelfCronState>> {
+  const db = getAdminFirestore();
+  if (db) {
     try {
-      const data = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-      current = { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
-    } catch {
-      current = DEFAULT_SETTINGS;
+      const doc = await db.collection('cronState').doc('current').get();
+      if (doc.exists) {
+        return doc.data() as Partial<SelfCronState>;
+      }
+    } catch (err) {
+      console.error('[Firestore] Error reading cronState:', err);
     }
   }
-  const updated: AppSettings = { ...current, ...settings };
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
-  return updated;
+
+  try {
+    ensureDirectoryExists();
+    if (fs.existsSync(CRON_STATE_FILE)) {
+      return JSON.parse(fs.readFileSync(CRON_STATE_FILE, 'utf-8'));
+    }
+  } catch (err) {
+    console.error('[Store] Error reading local cron-state.json:', err);
+  }
+  return {};
+}
+
+export async function saveCronStateToStore(state: SelfCronState): Promise<void> {
+  try {
+    ensureDirectoryExists();
+    fs.writeFileSync(CRON_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write local cron-state.json:', err);
+  }
+
+  const db = getAdminFirestore();
+  if (db) {
+    try {
+      await db.collection('cronState').doc('current').set(state, { merge: true });
+    } catch (err) {
+      console.error('[Firestore] Error saving cronState:', err);
+    }
+  }
 }

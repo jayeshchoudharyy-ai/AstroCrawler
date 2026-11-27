@@ -44,6 +44,10 @@ jobs:
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
           MONITORED_URLS: ${{ secrets.MONITORED_URLS || vars.MONITORED_URLS }}
           DEFAULT_RAZORPAY_LINK: ${{ vars.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/' }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
           SINGLE_URL: ${{ inputs.single_url }}
           FAIL_ON_ERROR: ${{ inputs.fail_on_error != false }}
         run: npx tsx scripts/run-audit.ts

@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import cron from 'node-cron';
 import { auditPage } from './crawler';
 import {
@@ -7,22 +5,15 @@ import {
   updateTarget,
   saveReport,
   getSettings,
+  getCronStateFromStore,
+  saveCronStateToStore,
   formatScheduleDescription,
   formatTime12h,
 } from './store';
 import { sendAuditReportEmail, DEFAULT_RECIPIENT } from './email';
 import { PageAuditResult, AuditReport, SelfCronState } from './types';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const CRON_STATE_FILE = path.join(DATA_DIR, 'cron-state.json');
-
 let isExecuting = false;
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
 
 /**
  * Returns date and time breakdown in the configured timezone (default Asia/Kolkata)
@@ -56,8 +47,8 @@ export function getISTDateParts(d: Date = new Date(), timezone: string = 'Asia/K
 /**
  * Calculates the next upcoming run time from user-configured automationTimes
  */
-export function getNextCronRun(now: Date = new Date()): { label: string; iso: string } {
-  const settings = getSettings();
+export async function getNextCronRun(now: Date = new Date()): Promise<{ label: string; iso: string }> {
+  const settings = await getSettings();
   const enabled = settings.automationEnabled !== false;
   const timezone = settings.timezone || 'Asia/Kolkata';
   const tzLabel = timezone === 'Asia/Kolkata' ? 'IST' : timezone;
@@ -120,11 +111,10 @@ export function getNextCronRun(now: Date = new Date()): { label: string; iso: st
 }
 
 /**
- * Retrieves the current self-cron state
+ * Retrieves the current self-cron state (from Firestore when configured, or local fallback)
  */
-export function getSelfCronState(): SelfCronState {
-  ensureDataDir();
-  const settings = getSettings();
+export async function getSelfCronState(): Promise<SelfCronState> {
+  const settings = await getSettings();
   const enabled = settings.automationEnabled !== false;
   const times =
     settings.automationTimes && settings.automationTimes.length > 0
@@ -137,17 +127,8 @@ export function getSelfCronState(): SelfCronState {
       return `${parseInt(m, 10)} ${parseInt(h, 10)} * * *`;
     })
     .join(' | ');
-  const nextRun = getNextCronRun();
-  let savedState: Partial<SelfCronState> = {};
-
-  try {
-    if (fs.existsSync(CRON_STATE_FILE)) {
-      const data = fs.readFileSync(CRON_STATE_FILE, 'utf-8');
-      savedState = JSON.parse(data);
-    }
-  } catch (err) {
-    console.error('[Self-Cron] Error reading cron-state.json:', err);
-  }
+  const nextRun = await getNextCronRun();
+  const savedState = await getCronStateFromStore();
 
   return {
     isRunning: isExecuting,
@@ -166,26 +147,19 @@ export function getSelfCronState(): SelfCronState {
 /**
  * Persists partial updates to the self-cron state
  */
-export function saveSelfCronState(updates: Partial<SelfCronState>): SelfCronState {
-  ensureDataDir();
-  const currentState = getSelfCronState();
+export async function saveSelfCronState(updates: Partial<SelfCronState>): Promise<SelfCronState> {
+  const currentState = await getSelfCronState();
   const newState: SelfCronState = {
     ...currentState,
     ...updates,
   };
-
-  try {
-    fs.writeFileSync(CRON_STATE_FILE, JSON.stringify(newState, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Self-Cron] Error writing cron-state.json:', err);
-  }
-
+  await saveCronStateToStore(newState);
   return newState;
 }
 
 /**
  * Executes a full audit across all active monitored pages,
- * records results, sends an email report to the developer, and updates cron state.
+ * records results in Firestore/store, sends an email report, and updates cron state.
  */
 export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Promise<{
   success: boolean;
@@ -205,16 +179,17 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
   console.log(`[Self-Cron] Starting audit trigger="${trigger}" at ${new Date().toISOString()}`);
 
   try {
-    saveSelfCronState({ isRunning: true });
+    await saveSelfCronState({ isRunning: true });
 
-    const settings = getSettings();
-    const targets = getTargets().filter((t) => t.isActive);
+    const settings = await getSettings();
+    const allTargets = await getTargets();
+    const targets = allTargets.filter((t) => t.isActive);
     const recipient = settings.recipientEmail || DEFAULT_RECIPIENT;
     const defaultRzp = settings.defaultRazorpayLink || 'https://pages.razorpay.com/';
 
     if (targets.length === 0) {
       console.warn('[Self-Cron] No active monitored targets found.');
-      saveSelfCronState({
+      await saveSelfCronState({
         isRunning: false,
         lastRunAt: new Date().toISOString(),
         lastTrigger: trigger,
@@ -236,7 +211,7 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
         const res = await auditPage(target.url, expectedRzp, target.name);
         results.push(res);
 
-        updateTarget(target.id, {
+        await updateTarget(target.id, {
           lastCheckedAt: res.checkedAt,
           lastStatus: res.statusCode,
           lastSummary: res.summary,
@@ -267,18 +242,16 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
       results,
     };
 
-    // Send email report via Resend
     const emailRes = await sendAuditReportEmail(report, recipient);
     report.emailSent = emailRes.success;
     report.emailError = emailRes.error;
 
-    // Save report in history
-    saveReport(report);
+    await saveReport(report);
 
     const durationMs = Date.now() - startTime;
     const summaryStatus = hasErrors ? 'FAIL' : 'PASS';
 
-    saveSelfCronState({
+    await saveSelfCronState({
       isRunning: false,
       lastRunAt: report.timestamp,
       lastTrigger: trigger,
@@ -292,7 +265,9 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
       lastEmailError: report.emailError,
     });
 
-    console.log(`[Self-Cron] Audit completed in ${durationMs}ms. Passed: ${passedPages}/${totalPages}. Email sent: ${report.emailSent}`);
+    console.log(
+      `[Self-Cron] Audit completed in ${durationMs}ms. Passed: ${passedPages}/${totalPages}. Email sent: ${report.emailSent}`
+    );
 
     return {
       success: true,
@@ -301,7 +276,7 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
     };
   } catch (err: any) {
     console.error('[Self-Cron] Unhandled exception in executeSelfCron:', err);
-    saveSelfCronState({
+    await saveSelfCronState({
       isRunning: false,
       lastRunAt: new Date().toISOString(),
       lastTrigger: trigger,
@@ -321,7 +296,7 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
 /**
  * Stops existing cron tasks and re-registers node-cron jobs according to current settings.
  */
-export function rescheduleSelfCron() {
+export async function rescheduleSelfCron() {
   const globalObj = globalThis as any;
 
   if (globalObj.__selfCronTask && typeof globalObj.__selfCronTask.stop === 'function') {
@@ -340,7 +315,7 @@ export function rescheduleSelfCron() {
   }
   globalObj.__selfCronTasks = [];
 
-  const settings = getSettings();
+  const settings = await getSettings();
   const enabled = settings.automationEnabled !== false;
   const timezone = settings.timezone || 'Asia/Kolkata';
   const times = Array.from(
@@ -356,7 +331,7 @@ export function rescheduleSelfCron() {
 
   if (!enabled || times.length === 0) {
     console.log('[Self-Cron] Automation is paused or has no scheduled times.');
-    saveSelfCronState({
+    await saveSelfCronState({
       isActive: false,
       schedule: '',
       timezone,
@@ -397,7 +372,7 @@ export function rescheduleSelfCron() {
     globalObj.__selfCronInitialized = true;
     console.log(`[Self-Cron] Registered ${times.length} scheduled task(s): ${description}`);
 
-    saveSelfCronState({
+    await saveSelfCronState({
       isActive: true,
       schedule: patterns.join(' | '),
       timezone,
@@ -416,7 +391,7 @@ export function rescheduleSelfCron() {
 /**
  * Initializes the internal node-cron scheduler (singleton pattern on globalThis).
  */
-export function initSelfCron() {
+export async function initSelfCron() {
   const globalObj = globalThis as any;
   if (globalObj.__selfCronInitialized) {
     console.log('[Self-Cron] Scheduler is already initialized on globalThis.');

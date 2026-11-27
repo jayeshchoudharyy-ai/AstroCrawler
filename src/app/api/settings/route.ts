@@ -12,8 +12,8 @@ const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export async function GET() {
   try {
-    const settings = getSettings();
-    const cronStatus = getSelfCronState();
+    const settings = await getSettings();
+    const cronStatus = await getSelfCronState();
     return NextResponse.json({
       success: true,
       settings,
@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest) {
       timezone,
     } = body;
 
-    const current = getSettings();
+    const current = await getSettings();
     const nextEnabled =
       typeof automationEnabled === 'boolean'
         ? automationEnabled
@@ -79,7 +79,7 @@ export async function PUT(req: NextRequest) {
       nextTimezone
     );
 
-    const updated = saveSettings({
+    const updated = await saveSettings({
       recipientEmail:
         typeof recipientEmail === 'string' && recipientEmail.trim()
           ? recipientEmail.trim()
@@ -96,8 +96,8 @@ export async function PUT(req: NextRequest) {
     });
 
     // Live-reschedule node-cron immediately with the new timings & count
-    const cronRes = rescheduleSelfCron();
-    const cronStatus = getSelfCronState();
+    const cronRes = await rescheduleSelfCron();
+    const cronStatus = await getSelfCronState();
 
     return NextResponse.json({
       success: true,

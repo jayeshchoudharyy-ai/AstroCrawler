@@ -225,7 +225,7 @@ export async function GET(req: NextRequest) {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
   try {
     const reportId = req.nextUrl.searchParams.get('reportId');
-    const reports = getReports();
+    const reports = await getReports();
 
     if (reports.length === 0) {
       return NextResponse.json(

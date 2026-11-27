@@ -96,7 +96,7 @@ async function main() {
   if (singleUrl && singleUrl.trim()) {
     const cleanUrl = singleUrl.trim();
     console.log(`[CLI Audit] Auditing single URL: ${cleanUrl}`);
-    const settings = getSettings();
+    const settings = await getSettings();
     const recipient = settings.recipientEmail || DEFAULT_RECIPIENT;
     const expectedRzp = settings.defaultRazorpayLink || 'https://pages.razorpay.com/';
 
@@ -120,7 +120,7 @@ async function main() {
     const emailRes = await sendAuditReportEmail(report, recipient);
     report.emailSent = emailRes.success;
     report.emailError = emailRes.error;
-    saveReport(report);
+    await saveReport(report);
   } else {
     const result = await executeSelfCron('cron');
     if (!result.success) {

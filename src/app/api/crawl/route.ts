@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       singlePageOnly = true, // When checking one page from UI, only check that specific page
     } = body;
 
-    const settings = getSettings();
+    const settings = await getSettings();
     const targetRecipient = recipientEmail || settings.recipientEmail;
     const defaultRzp = settings.defaultRazorpayLink || 'https://pages.razorpay.com/';
 
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
 
     if (auditAll) {
       // Audit all active targets
-      const targets = getTargets().filter((t) => t.isActive);
+      const allTargets = await getTargets();
+      const targets = allTargets.filter((t) => t.isActive);
 
       if (targets.length === 0) {
         return NextResponse.json(
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
           results.push(res);
 
           // Update target status in store
-          updateTarget(target.id, {
+          await updateTarget(target.id, {
             lastCheckedAt: res.checkedAt,
             lastStatus: res.statusCode,
             lastSummary: res.summary,
@@ -77,14 +78,14 @@ export async function POST(req: NextRequest) {
       // Save/update this page into Monitored Targets if requested
       if (saveToTargets) {
         try {
-          const currentTargets = getTargets();
+          const currentTargets = await getTargets();
           const cleanUrl = url.trim();
           const existing = currentTargets.find(
             (t) => t.url.toLowerCase() === cleanUrl.toLowerCase()
           );
 
           if (existing) {
-            updateTarget(existing.id, {
+            await updateTarget(existing.id, {
               expectedRazorpayLink: rzpLink.trim(),
               lastCheckedAt: res.checkedAt,
               lastStatus: res.statusCode,
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
                 derivedName = cleanUrl;
               }
             }
-            addTarget({
+            await addTarget({
               url: cleanUrl,
               name: derivedName,
               expectedRazorpayLink: rzpLink.trim(),
@@ -146,7 +147,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Save report in history
-    saveReport(report);
+    await saveReport(report);
 
     return NextResponse.json({
       success: true,

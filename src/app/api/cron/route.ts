@@ -1,5 +1,6 @@
   import { NextRequest, NextResponse } from 'next/server';
 import { executeSelfCron, getSelfCronState } from '@/lib/selfCron';
+import { getStorageBackend } from '@/lib/store';
 
 export const maxDuration = 120; // 120s max execution duration for multi-target crawl + retries
 export const dynamic = 'force-dynamic';
@@ -21,10 +22,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result, { status: result.success ? 200 : 500 });
     }
 
-    const cronState = getSelfCronState();
+    const cronState = await getSelfCronState();
     return NextResponse.json({
       success: true,
       isSelfCron: true,
+      storageBackend: getStorageBackend(),
       status: cronState,
     });
   } catch (error: any) {

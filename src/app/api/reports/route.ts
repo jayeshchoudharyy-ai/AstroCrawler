@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const reports = getReports();
+    const reports = await getReports();
     return NextResponse.json({ success: true, reports });
   } catch (error: any) {
     return NextResponse.json(
