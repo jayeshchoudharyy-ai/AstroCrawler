@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow authenticated or dashboard read access; all writes go through Firebase Admin SDK
+    match /targets/{targetId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /reports/{reportId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /cronState/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
