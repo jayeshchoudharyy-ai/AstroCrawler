@@ -17,8 +17,9 @@ export async function GET(req: NextRequest) {
                       req.nextUrl.searchParams.get('trigger') === 'true';
 
     if (shouldRun) {
-      console.log('[API /api/cron] Manual audit trigger requested via GET query parameter');
-      const result = await executeSelfCron('manual');
+      const source = req.nextUrl.searchParams.get('source') === 'cron' ? 'cron' : 'manual';
+      console.log(`[API /api/cron] Audit trigger requested via GET (source=${source})`);
+      const result = await executeSelfCron(source);
       return NextResponse.json(result, { status: result.success ? 200 : 500 });
     }
 
