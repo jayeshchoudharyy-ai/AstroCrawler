@@ -19,6 +19,7 @@ import {
 import { AppSettings, SelfCronState } from '@/lib/types';
 
 interface AutomationSettingsProps {
+  section: 'automation' | 'general';
   initialSettings: AppSettings;
   cronState: SelfCronState | null;
   onSettingsSaved: (settings: AppSettings, cronStatus: SelfCronState) => void;
@@ -66,6 +67,7 @@ function format12h(hhmm: string): string {
 }
 
 export default function AutomationSettings({
+  section,
   initialSettings,
   cronState,
   onSettingsSaved,
@@ -198,6 +200,7 @@ export default function AutomationSettings({
       )}
 
       {/* Card 1: Automation Schedule & Count */}
+      {section === 'automation' && (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-[#0f1422] space-y-6">
         
         {/* Header + Enable Toggle */}
@@ -363,9 +366,31 @@ export default function AutomationSettings({
           )}
         </div>
 
+        <div className="flex items-center justify-end pt-2">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="inline-flex items-center space-x-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 transition"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Applying Schedule...</span>
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                <span>Save & Apply Automation Schedule</span>
+              </>
+            )}
+          </button>
+        </div>
+
       </div>
+      )}
 
       {/* Card 2: General & Notification Settings */}
+      {section === 'general' && (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-[#0f1422] space-y-5">
         <div className="flex items-center space-x-3 border-b border-slate-100 pb-4 dark:border-slate-800/80">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400">
@@ -439,17 +464,18 @@ export default function AutomationSettings({
             {isSaving ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Applying Schedule...</span>
+                <span>Saving Settings...</span>
               </>
             ) : (
               <>
                 <Save className="h-4 w-4" />
-                <span>Save & Apply Automation Schedule</span>
+                <span>Save General Settings</span>
               </>
             )}
           </button>
         </div>
       </div>
+      )}
 
     </form>
   );

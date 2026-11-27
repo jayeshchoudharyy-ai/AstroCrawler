@@ -20,7 +20,14 @@ import {
   Sliders,
 } from 'lucide-react';
 
-export type NavTab = 'overview' | 'live' | 'targets' | 'reports' | 'cron' | 'settings';
+export type NavTab =
+  | 'overview'
+  | 'live'
+  | 'targets'
+  | 'reports'
+  | 'cron'
+  | 'automation-settings'
+  | 'general-settings';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -166,25 +173,26 @@ export default function Sidebar({
             {isSettingsOpen && (
               <div className="mt-1 space-y-1">
                 <button
-                  onClick={() => handleNavClick('settings')}
+                  onClick={() => handleNavClick('automation-settings')}
                   className={`flex w-full items-center space-x-3 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
-                    activeTab === 'settings'
+                    activeTab === 'automation-settings'
                       ? 'bg-slate-900 text-white shadow-sm dark:bg-[#151c2e] dark:text-emerald-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200'
                   }`}
                 >
-                  <Sliders className={`h-4 w-4 ${activeTab === 'settings' ? 'text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} />
+                  <Clock className={`h-4 w-4 ${activeTab === 'automation-settings' ? 'text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span>Automation Timing & Count</span>
                 </button>
 
                 <button
-                  onClick={() => {
-                    if (onOpenSettings) onOpenSettings();
-                    onCloseMobile();
-                  }}
-                  className="flex w-full items-center space-x-3 rounded-lg px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                  onClick={() => handleNavClick('general-settings')}
+                  className={`flex w-full items-center space-x-3 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+                    activeTab === 'general-settings'
+                      ? 'bg-slate-900 text-white shadow-sm dark:bg-[#151c2e] dark:text-emerald-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200'
+                  }`}
                 >
-                  <Settings className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                  <Sliders className={`h-4 w-4 ${activeTab === 'general-settings' ? 'text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span>General Settings</span>
                 </button>
 

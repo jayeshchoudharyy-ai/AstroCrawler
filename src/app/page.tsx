@@ -196,7 +196,7 @@ export default function Home() {
         reportsCount={reports.length}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        onOpenSettings={() => setActiveTab('settings')}
+        onOpenSettings={() => setActiveTab('general-settings')}
       />
 
       {/* Main Content Area (Offset for Desktop Sidebar) */}
@@ -371,7 +371,7 @@ export default function Home() {
 
               <CronSetupGuide
                 recipientEmail={settings.recipientEmail}
-                onOpenSettings={() => setActiveTab('settings')}
+                onOpenSettings={() => setActiveTab('automation-settings')}
                 onAuditCompleted={async () => {
                   await fetchTargetsAndSettings();
                   await fetchReports();
@@ -399,21 +399,48 @@ export default function Home() {
             </div>
           )}
 
-          {/* VIEW 6: Automation Timing & General Settings */}
-          {activeTab === 'settings' && (
+          {/* VIEW 6: Automation Timing & Count */}
+          {activeTab === 'automation-settings' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Automation & General Settings
+                    Automation Timing & Count
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Customize the number of daily automations, exact run timings, timezone, and email defaults.
+                    Customize the number of daily automations and exact run timings.
                   </p>
                 </div>
               </div>
 
               <AutomationSettings
+                section="automation"
+                initialSettings={settings}
+                cronState={cronState}
+                onSettingsSaved={(updatedSettings, updatedCron) => {
+                  setSettings(updatedSettings);
+                  setCronState(updatedCron);
+                }}
+              />
+            </div>
+          )}
+
+          {/* VIEW 7: General Settings */}
+          {activeTab === 'general-settings' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    General Settings
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Configure timezone, report recipient email, and default Razorpay link.
+                  </p>
+                </div>
+              </div>
+
+              <AutomationSettings
+                section="general"
                 initialSettings={settings}
                 cronState={cronState}
                 onSettingsSaved={(updatedSettings, updatedCron) => {
