@@ -1,18 +1,23 @@
 {
-  "isActive": true,
-  "schedule": "0 9,21 * * *",
-  "timezone": "Asia/Kolkata",
-  "scheduleDescription": "Twice daily at 9:00 AM & 9:00 PM IST (Asia/Kolkata)",
   "isRunning": false,
+  "isActive": true,
+  "schedule": "0 9 * * * | 0 21 * * *",
+  "timezone": "Asia/Kolkata",
+  "scheduleDescription": "Twice daily at 9:00 AM, 9:00 PM IST",
   "nextRunIST": "Today at 9:00 PM IST",
   "nextRunISO": "2026-11-27T15:30:00.000Z",
-  "lastRunAt": "2026-11-27T06:05:52.147Z",
-  "lastTrigger": "cron",
-  "lastDurationMs": 54663,
+  "lastRunAt": "2026-11-27T07:16:37.229Z",
+  "lastTrigger": "manual",
+  "lastDurationMs": 58744,
   "lastSummary": "PASS",
   "lastTotalPages": 13,
   "lastPassedPages": 13,
   "lastFailedPages": 0,
   "lastEmailSent": true,
-  "lastEmailRecipient": "jayeshchoudharyy@gmail.com"
+  "lastEmailRecipient": "jayeshchoudharyy@gmail.com",
+  "automationTimes": [
+    "09:00",
+    "21:00"
+  ],
+  "automationsPerDay": 2
 }

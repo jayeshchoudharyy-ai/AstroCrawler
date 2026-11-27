@@ -25,6 +25,7 @@ interface TopHeaderProps {
   latestReport?: AuditReport | null;
   targets?: TargetPage[];
   onViewReports?: () => void;
+  scheduleSummary?: string;
 }
 
 interface ErrorNotificationItem {
@@ -43,6 +44,7 @@ export default function TopHeader({
   latestReport = null,
   targets = [],
   onViewReports,
+  scheduleSummary = '9:00 AM & 9:00 PM',
 }: TopHeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -168,9 +170,9 @@ export default function TopHeader({
       <div className="flex items-center space-x-2 sm:space-x-3">
         
         {/* Schedule Info Pill */}
-        <div className="hidden md:flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
-          <Clock className="h-3.5 w-3.5 text-amber-500" />
-          <span>9:00 AM & 9:00 PM</span>
+        <div className="hidden md:flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 max-w-[220px]">
+          <Clock className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+          <span className="truncate">{scheduleSummary}</span>
         </div>
 
         {/* Recipient Email Pill */}

@@ -10,8 +10,41 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 export const DEFAULT_SETTINGS: AppSettings = {
   recipientEmail: 'jayeshchoudharyy@gmail.com',
   defaultRazorpayLink: 'https://pages.razorpay.com/',
-  scheduleDescription: 'Twice daily at 9:00 AM & 9:00 PM IST (03:30 & 15:30 UTC)',
+  scheduleDescription: 'Twice daily at 9:00 AM & 9:00 PM IST',
+  automationEnabled: true,
+  automationsPerDay: 2,
+  automationTimes: ['09:00', '21:00'],
+  timezone: 'Asia/Kolkata',
 };
+
+export function formatTime12h(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return hhmm;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+export function formatScheduleDescription(
+  times: string[],
+  enabled: boolean = true,
+  timezone: string = 'Asia/Kolkata'
+): string {
+  if (!enabled || times.length === 0) {
+    return 'Automation paused';
+  }
+  const tzLabel = timezone === 'Asia/Kolkata' ? 'IST' : timezone;
+  const formatted = [...times].sort().map(formatTime12h).join(', ');
+  const freq =
+    times.length === 1
+      ? 'Once daily'
+      : times.length === 2
+      ? 'Twice daily'
+      : `${times.length}x daily`;
+  return `${freq} at ${formatted} ${tzLabel}`;
+}
 
 const DEFAULT_TARGETS: TargetPage[] = [
   {

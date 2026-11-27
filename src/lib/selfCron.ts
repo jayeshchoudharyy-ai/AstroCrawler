@@ -2,7 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
 import { auditPage } from './crawler';
-import { getTargets, updateTarget, saveReport, getSettings } from './store';
+import {
+  getTargets,
+  updateTarget,
+  saveReport,
+  getSettings,
+  formatScheduleDescription,
+  formatTime12h,
+} from './store';
 import { sendAuditReportEmail, DEFAULT_RECIPIENT } from './email';
 import { PageAuditResult, AuditReport, SelfCronState } from './types';
 
@@ -18,11 +25,11 @@ function ensureDataDir() {
 }
 
 /**
- * Returns date and time breakdown in IST (Asia/Kolkata, UTC+05:30)
+ * Returns date and time breakdown in the configured timezone (default Asia/Kolkata)
  */
-export function getISTDateParts(d: Date = new Date()) {
+export function getISTDateParts(d: Date = new Date(), timezone: string = 'Asia/Kolkata') {
   const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
+    timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -47,40 +54,69 @@ export function getISTDateParts(d: Date = new Date()) {
 }
 
 /**
- * Calculates the next upcoming run time for 9:00 AM or 9:00 PM IST
+ * Calculates the next upcoming run time from user-configured automationTimes
  */
 export function getNextCronRun(now: Date = new Date()): { label: string; iso: string } {
-  const ist = getISTDateParts(now);
-  const currentTotalSeconds = ist.hour * 3600 + ist.minute * 60 + ist.second;
-  const target9AM = 9 * 3600;
-  const target9PM = 21 * 3600;
+  const settings = getSettings();
+  const enabled = settings.automationEnabled !== false;
+  const timezone = settings.timezone || 'Asia/Kolkata';
+  const tzLabel = timezone === 'Asia/Kolkata' ? 'IST' : timezone;
+  const rawTimes =
+    settings.automationTimes && settings.automationTimes.length > 0
+      ? settings.automationTimes
+      : ['09:00', '21:00'];
 
-  let nextYear = ist.year;
-  let nextMonth = ist.month;
-  let nextDay = ist.day;
-  let nextHour = 9;
-  let label = '';
+  if (!enabled || rawTimes.length === 0) {
+    return { label: 'Automation paused', iso: '' };
+  }
 
-  if (currentTotalSeconds < target9AM) {
-    nextHour = 9;
-    label = 'Today at 9:00 AM IST';
-  } else if (currentTotalSeconds < target9PM) {
-    nextHour = 21;
-    label = 'Today at 9:00 PM IST';
-  } else {
-    // Tomorrow at 9 AM IST
+  const parsedSlots = rawTimes
+    .map((t) => {
+      const [hStr, mStr] = t.split(':');
+      const h = parseInt(hStr, 10);
+      const m = parseInt(mStr, 10);
+      return {
+        raw: t,
+        hour: h,
+        minute: m,
+        totalSeconds: h * 3600 + m * 60,
+      };
+    })
+    .filter((s) => !isNaN(s.hour) && !isNaN(s.minute))
+    .sort((a, b) => a.totalSeconds - b.totalSeconds);
+
+  if (parsedSlots.length === 0) {
+    return { label: 'No valid times set', iso: '' };
+  }
+
+  const nowParts = getISTDateParts(now, timezone);
+  const currentTotalSeconds = nowParts.hour * 3600 + nowParts.minute * 60 + nowParts.second;
+
+  let nextYear = nowParts.year;
+  let nextMonth = nowParts.month;
+  let nextDay = nowParts.day;
+  let chosen = parsedSlots.find((s) => s.totalSeconds > currentTotalSeconds);
+  let dayPrefix = 'Today';
+
+  if (!chosen) {
+    chosen = parsedSlots[0];
+    dayPrefix = 'Tomorrow';
     const tomorrow = new Date(now.getTime() + 24 * 3600 * 1000);
-    const tomParts = getISTDateParts(tomorrow);
+    const tomParts = getISTDateParts(tomorrow, timezone);
     nextYear = tomParts.year;
     nextMonth = tomParts.month;
     nextDay = tomParts.day;
-    nextHour = 9;
-    label = 'Tomorrow at 9:00 AM IST';
   }
 
+  const label = `${dayPrefix} at ${formatTime12h(chosen.raw)} ${tzLabel}`;
   const pad = (n: number) => String(n).padStart(2, '0');
-  const isoStr = `${nextYear}-${pad(nextMonth)}-${pad(nextDay)}T${pad(nextHour)}:00:00+05:30`;
-  return { label, iso: new Date(isoStr).toISOString() };
+  const offset = timezone === 'Asia/Kolkata' ? '+05:30' : 'Z';
+  const isoStr = `${nextYear}-${pad(nextMonth)}-${pad(nextDay)}T${pad(chosen.hour)}:${pad(chosen.minute)}:00${offset}`;
+  const parsedDate = new Date(isoStr);
+  return {
+    label,
+    iso: isNaN(parsedDate.getTime()) ? now.toISOString() : parsedDate.toISOString(),
+  };
 }
 
 /**
@@ -88,6 +124,19 @@ export function getNextCronRun(now: Date = new Date()): { label: string; iso: st
  */
 export function getSelfCronState(): SelfCronState {
   ensureDataDir();
+  const settings = getSettings();
+  const enabled = settings.automationEnabled !== false;
+  const times =
+    settings.automationTimes && settings.automationTimes.length > 0
+      ? settings.automationTimes
+      : ['09:00', '21:00'];
+  const timezone = settings.timezone || 'Asia/Kolkata';
+  const schedulePatterns = times
+    .map((t) => {
+      const [h, m] = t.split(':');
+      return `${parseInt(m, 10)} ${parseInt(h, 10)} * * *`;
+    })
+    .join(' | ');
   const nextRun = getNextCronRun();
   let savedState: Partial<SelfCronState> = {};
 
@@ -101,12 +150,14 @@ export function getSelfCronState(): SelfCronState {
   }
 
   return {
-    isActive: true,
-    schedule: '0 9,21 * * *',
-    timezone: 'Asia/Kolkata',
-    scheduleDescription: 'Twice daily at 9:00 AM & 9:00 PM IST (Asia/Kolkata)',
     isRunning: isExecuting,
     ...savedState,
+    isActive: enabled,
+    schedule: schedulePatterns,
+    timezone,
+    automationTimes: times,
+    automationsPerDay: settings.automationsPerDay ?? times.length,
+    scheduleDescription: formatScheduleDescription(times, enabled, timezone),
     nextRunIST: nextRun.label,
     nextRunISO: nextRun.iso,
   };
@@ -268,46 +319,109 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
 }
 
 /**
- * Initializes the internal node-cron scheduler (singleton pattern on globalThis).
- * Runs twice daily at 9:00 AM IST and 9:00 PM IST (Asia/Kolkata).
+ * Stops existing cron tasks and re-registers node-cron jobs according to current settings.
  */
-export function initSelfCron() {
+export function rescheduleSelfCron() {
   const globalObj = globalThis as any;
-  if (globalObj.__selfCronTask) {
-    console.log('[Self-Cron] Scheduler is already initialized on globalThis.');
-    return { started: false, message: 'Scheduler already active' };
+
+  if (globalObj.__selfCronTask && typeof globalObj.__selfCronTask.stop === 'function') {
+    try {
+      globalObj.__selfCronTask.stop();
+    } catch {}
+    globalObj.__selfCronTask = null;
+  }
+
+  if (Array.isArray(globalObj.__selfCronTasks)) {
+    for (const t of globalObj.__selfCronTasks) {
+      try {
+        if (t && typeof t.stop === 'function') t.stop();
+      } catch {}
+    }
+  }
+  globalObj.__selfCronTasks = [];
+
+  const settings = getSettings();
+  const enabled = settings.automationEnabled !== false;
+  const timezone = settings.timezone || 'Asia/Kolkata';
+  const times = Array.from(
+    new Set(
+      (settings.automationTimes && settings.automationTimes.length > 0
+        ? settings.automationTimes
+        : ['09:00', '21:00']
+      ).filter((t) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(t))
+    )
+  ).sort();
+
+  const description = formatScheduleDescription(times, enabled, timezone);
+
+  if (!enabled || times.length === 0) {
+    console.log('[Self-Cron] Automation is paused or has no scheduled times.');
+    saveSelfCronState({
+      isActive: false,
+      schedule: '',
+      timezone,
+      automationTimes: times,
+      automationsPerDay: 0,
+      scheduleDescription: description,
+    });
+    return { started: false, message: 'Automation paused' };
   }
 
   try {
-    const task = cron.schedule(
-      '0 9,21 * * *',
-      async () => {
-        console.log('[Self-Cron] Triggered twice-daily audit (09:00 / 21:00 IST)');
-        try {
-          await executeSelfCron('cron');
-        } catch (err) {
-          console.error('[Self-Cron] Error in scheduled cron job:', err);
+    const patterns: string[] = [];
+    for (const timeStr of times) {
+      const [hStr, mStr] = timeStr.split(':');
+      const hour = parseInt(hStr, 10);
+      const minute = parseInt(mStr, 10);
+      const pattern = `${minute} ${hour} * * *`;
+      patterns.push(pattern);
+
+      const task = cron.schedule(
+        pattern,
+        async () => {
+          console.log(`[Self-Cron] Triggered scheduled audit for ${timeStr} (${timezone})`);
+          try {
+            await executeSelfCron('cron');
+          } catch (err) {
+            console.error('[Self-Cron] Error in scheduled cron job:', err);
+          }
+        },
+        {
+          timezone,
         }
-      },
-      {
-        timezone: 'Asia/Kolkata',
-      }
-    );
+      );
 
-    globalObj.__selfCronTask = task;
-    console.log('[Self-Cron] Registered scheduled task for 9:00 AM & 9:00 PM IST (Asia/Kolkata)');
+      globalObj.__selfCronTasks.push(task);
+    }
 
-    // Ensure initial cron-state.json exists
+    globalObj.__selfCronInitialized = true;
+    console.log(`[Self-Cron] Registered ${times.length} scheduled task(s): ${description}`);
+
     saveSelfCronState({
       isActive: true,
-      schedule: '0 9,21 * * *',
-      timezone: 'Asia/Kolkata',
-      scheduleDescription: 'Twice daily at 9:00 AM & 9:00 PM IST (Asia/Kolkata)',
+      schedule: patterns.join(' | '),
+      timezone,
+      automationTimes: times,
+      automationsPerDay: times.length,
+      scheduleDescription: description,
     });
 
-    return { started: true, message: 'Self-Cron initialized successfully' };
+    return { started: true, message: `Self-Cron scheduled: ${description}` };
   } catch (err: any) {
     console.error('[Self-Cron] Failed to initialize node-cron schedule:', err);
     return { started: false, message: err.message };
   }
+}
+
+/**
+ * Initializes the internal node-cron scheduler (singleton pattern on globalThis).
+ */
+export function initSelfCron() {
+  const globalObj = globalThis as any;
+  if (globalObj.__selfCronInitialized) {
+    console.log('[Self-Cron] Scheduler is already initialized on globalThis.');
+    return { started: false, message: 'Scheduler already active' };
+  }
+
+  return rescheduleSelfCron();
 }

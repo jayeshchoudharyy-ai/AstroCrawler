@@ -10,6 +10,7 @@ import LiveAuditor from '@/components/LiveAuditor';
 import MonitoredTargets from '@/components/MonitoredTargets';
 import ReportsHistory from '@/components/ReportsHistory';
 import CronSetupGuide from '@/components/CronSetupGuide';
+import AutomationSettings from '@/components/AutomationSettings';
 import { TargetPage, AuditReport, AppSettings, PageAuditResult, SelfCronState } from '@/lib/types';
 import {
   CheckCircle2,
@@ -195,7 +196,7 @@ export default function Home() {
         reportsCount={reports.length}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        onOpenSettings={() => setActiveTab('targets')}
+        onOpenSettings={() => setActiveTab('settings')}
       />
 
       {/* Main Content Area (Offset for Desktop Sidebar) */}
@@ -209,6 +210,7 @@ export default function Home() {
           latestReport={latestReport}
           targets={targets}
           onViewReports={() => setActiveTab('reports')}
+          scheduleSummary={cronState?.scheduleDescription || settings.scheduleDescription}
         />
 
         {/* Content Body */}
@@ -289,6 +291,8 @@ export default function Home() {
                 targets={targets}
                 latestReport={reports.length > 0 ? reports[0] : null}
                 nextRunIST={cronState?.nextRunIST}
+                automationsPerDay={cronState?.automationsPerDay ?? settings.automationsPerDay ?? 2}
+                automationEnabled={cronState?.isActive ?? settings.automationEnabled ?? true}
               />
 
               {/* Currently Monitoring Table with Uptime Bars */}
@@ -367,6 +371,7 @@ export default function Home() {
 
               <CronSetupGuide
                 recipientEmail={settings.recipientEmail}
+                onOpenSettings={() => setActiveTab('settings')}
                 onAuditCompleted={async () => {
                   await fetchTargetsAndSettings();
                   await fetchReports();
@@ -391,6 +396,31 @@ export default function Home() {
               </div>
 
               <ReportsHistory reports={reports} />
+            </div>
+          )}
+
+          {/* VIEW 6: Automation Timing & General Settings */}
+          {activeTab === 'settings' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Automation & General Settings
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Customize the number of daily automations, exact run timings, timezone, and email defaults.
+                  </p>
+                </div>
+              </div>
+
+              <AutomationSettings
+                initialSettings={settings}
+                cronState={cronState}
+                onSettingsSaved={(updatedSettings, updatedCron) => {
+                  setSettings(updatedSettings);
+                  setCronState(updatedCron);
+                }}
+              />
             </div>
           )}
 

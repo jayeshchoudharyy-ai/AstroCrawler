@@ -95,6 +95,10 @@ export interface AppSettings {
   defaultRazorpayLink: string;
   cronSecret?: string;
   scheduleDescription: string;
+  automationEnabled?: boolean;
+  automationsPerDay?: number;
+  automationTimes?: string[];
+  timezone?: string;
 }
 
 export interface SelfCronState {
@@ -102,6 +106,8 @@ export interface SelfCronState {
   schedule: string;
   timezone: string;
   scheduleDescription: string;
+  automationTimes?: string[];
+  automationsPerDay?: number;
   nextRunIST: string;
   nextRunISO: string;
   lastRunAt?: string;

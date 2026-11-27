@@ -21,9 +21,14 @@ import { SelfCronState } from '@/lib/types';
 interface CronSetupGuideProps {
   recipientEmail: string;
   onAuditCompleted?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export default function CronSetupGuide({ recipientEmail, onAuditCompleted }: CronSetupGuideProps) {
+export default function CronSetupGuide({
+  recipientEmail,
+  onAuditCompleted,
+  onOpenSettings,
+}: CronSetupGuideProps) {
   const [cronState, setCronState] = useState<SelfCronState | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(true);
   const [isTriggering, setIsTriggering] = useState<boolean>(false);
@@ -116,13 +121,21 @@ export default function CronSetupGuide({ recipientEmail, onAuditCompleted }: Cro
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Twice daily at <strong>9:00 AM & 9:00 PM IST</strong> • 100% independent from Vercel • Automated Resend emails to {recipientEmail}
+              <strong>{cronState?.scheduleDescription || 'Twice daily at 9:00 AM & 9:00 PM IST'}</strong> • 100% independent from Vercel • Automated Resend emails to {recipientEmail}
             </p>
           </div>
         </div>
 
         {/* Live Manual Trigger Action Button */}
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition"
+            >
+              <span>Edit Timing & Count</span>
+            </button>
+          )}
           <button
             onClick={fetchCronStatus}
             disabled={isLoadingStatus}
@@ -206,10 +219,12 @@ export default function CronSetupGuide({ recipientEmail, onAuditCompleted }: Cro
             <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div className="mt-2 text-lg font-bold text-indigo-900 dark:text-indigo-200">
-            9:00 AM & 9:00 PM
+            {cronState?.isActive === false
+              ? 'Paused'
+              : `${cronState?.automationsPerDay || 2}x / Day`}
           </div>
-          <p className="mt-1 text-[11px] text-indigo-700/80 dark:text-indigo-400/70">
-            Cron pattern: <code className="font-mono">0 9,21 * * *</code>
+          <p className="mt-1 text-[11px] text-indigo-700/80 dark:text-indigo-400/70 truncate" title={cronState?.schedule}>
+            Pattern: <code className="font-mono">{cronState?.schedule || '0 9,21 * * *'}</code>
           </p>
         </div>
 

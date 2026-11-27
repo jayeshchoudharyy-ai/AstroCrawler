@@ -8,12 +8,16 @@ interface OverviewCardsProps {
   targets: TargetPage[];
   latestReport: AuditReport | null;
   nextRunIST?: string;
+  automationsPerDay?: number;
+  automationEnabled?: boolean;
 }
 
 export default function OverviewCards({
   targets,
   latestReport,
   nextRunIST = 'Today at 9:00 PM IST',
+  automationsPerDay = 2,
+  automationEnabled = true,
 }: OverviewCardsProps) {
   const activeTargets = targets.filter((t) => t.isActive);
   const totalMonitored = activeTargets.length;
@@ -117,7 +121,7 @@ export default function OverviewCards({
               SELF-HOSTED CRON
             </span>
             <div className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              9AM & 9PM
+              {automationEnabled ? `${automationsPerDay}x / Day` : 'Paused'}
             </div>
           </div>
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30">
