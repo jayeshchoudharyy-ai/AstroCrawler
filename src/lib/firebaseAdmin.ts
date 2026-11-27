@@ -1,7 +1,5 @@
 import { initializeApp, getApps, getApp, cert, App, Credential } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
-import { getStorage, Storage } from 'firebase-admin/storage';
-import { getAuth, Auth } from 'firebase-admin/auth';
 
 function getServiceAccountCredential(): Credential | null {
   const jsonRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -54,14 +52,10 @@ export function getFirebaseAdminApp(): App | null {
 
   const projectId =
     process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const storageBucket =
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 
   return initializeApp({
     credential,
     projectId,
-    ...(storageBucket ? { storageBucket } : {}),
   });
 }
 
@@ -75,16 +69,4 @@ export function getAdminFirestore(): Firestore | null {
     // ignore if settings were already applied
   }
   return db;
-}
-
-export function getAdminStorage(): Storage | null {
-  const app = getFirebaseAdminApp();
-  if (!app) return null;
-  return getStorage(app);
-}
-
-export function getAdminAuth(): Auth | null {
-  const app = getFirebaseAdminApp();
-  if (!app) return null;
-  return getAuth(app);
 }
