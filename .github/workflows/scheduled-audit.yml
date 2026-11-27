@@ -1,0 +1,66 @@
+name: AstroCrawler Scheduled Audit (9AM & 9PM IST)
+
+on:
+  schedule:
+    # 9:00 AM IST (03:30 UTC) and 9:00 PM IST (15:30 UTC) daily
+    - cron: '30 3,15 * * *'
+  workflow_dispatch:
+    inputs:
+      single_url:
+        description: 'Optional single URL to audit (leave empty to audit all monitored pages)'
+        required: false
+        default: ''
+      fail_on_error:
+        description: 'Fail the workflow run if any audited page reports an error'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  audit:
+    name: Run Playwright Audit & Send Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Run AstroCrawler Audit
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+          MONITORED_URLS: ${{ secrets.MONITORED_URLS || vars.MONITORED_URLS }}
+          DEFAULT_RAZORPAY_LINK: ${{ vars.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/' }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.single_url }}" ]; then
+            ARGS="$ARGS --url \"${{ inputs.single_url }}\""
+          fi
+          if [ "${{ inputs.fail_on_error }}" != "false" ]; then
+            ARGS="$ARGS --fail-on-error"
+          fi
+          eval npx tsx scripts/run-audit.ts $ARGS
+
+      - name: Upload Audit Reports Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: astrocrawler-audit-report-${{ github.run_number }}
+          path: |
+            data/reports.json
+            data/cron-state.json
+          if-no-files-found: ignore
+          retention-days: 30
