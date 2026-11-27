@@ -204,7 +204,7 @@ export default function Sidebar({
         {/* Sidebar Footer: Superadmin User Profile */}
         <div className="border-t border-slate-100 p-3.5 dark:border-slate-800/60">
           <div className="flex items-center space-x-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-900/60">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-xs font-bold text-emerald-400">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
               JD
             </div>
             <div className="flex-1 min-w-0">

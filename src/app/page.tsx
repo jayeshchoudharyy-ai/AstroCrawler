@@ -219,21 +219,21 @@ export default function Home() {
             <div
               className={`rounded-xl p-4 flex items-center justify-between shadow-sm transition border ${
                 bannerNotice.type === 'success'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-300'
+                  : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-300'
               }`}
             >
               <div className="flex items-center space-x-2.5 text-xs font-semibold">
                 {bannerNotice.type === 'success' ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                 ) : (
-                  <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />
+                  <AlertCircle className="h-4 w-4 text-rose-600 dark:text-rose-400 flex-shrink-0" />
                 )}
                 <span>{bannerNotice.message}</span>
               </div>
               <button
                 onClick={() => setBannerNotice(null)}
-                className="text-xs font-bold text-slate-400 hover:text-white ml-4"
+                className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white ml-4"
               >
                 ✕
               </button>
@@ -258,10 +258,10 @@ export default function Home() {
                 <div className="flex items-center space-x-2.5">
                   <button
                     onClick={() => setIsAddModalOpen(true)}
-                    className="inline-flex items-center space-x-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-900 shadow hover:bg-slate-100 transition dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    className="inline-flex items-center space-x-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-900 shadow-sm hover:bg-slate-100 transition dark:border-transparent dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                   >
                     <Plus className="h-4 w-4" />
-                    <span>+ New Service</span>
+                    <span>New Service</span>
                   </button>
 
                   <button
