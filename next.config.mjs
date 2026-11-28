@@ -5,7 +5,6 @@ const nextConfig = {
       'playwright',
       'playwright-core',
       'node-cron',
-      'firebase-admin',
     ],
     instrumentationHook: true,
   },

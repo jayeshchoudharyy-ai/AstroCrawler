@@ -12,8 +12,6 @@ import ReportsHistory from '@/components/ReportsHistory';
 import CronSetupGuide from '@/components/CronSetupGuide';
 import AutomationSettings from '@/components/AutomationSettings';
 import { TargetPage, AuditReport, AppSettings, PageAuditResult, SelfCronState } from '@/lib/types';
-import { getClientFirestore, isFirebaseClientConfigured } from '@/lib/firebaseClient';
-import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import {
   CheckCircle2,
   AlertCircle,
@@ -40,7 +38,6 @@ export default function Home() {
 
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [auditingId, setAuditingId] = useState<string | null>(null);
-  const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -87,65 +84,6 @@ export default function Home() {
     fetchTargetsAndSettings();
     fetchReports();
     fetchCronState();
-
-    // Real-time Cloud Firestore synchronization when Firebase Client SDK is configured
-    const db = getClientFirestore();
-    if (!db || !isFirebaseClientConfigured()) {
-      setIsFirebaseSynced(false);
-      return;
-    }
-
-    setIsFirebaseSynced(true);
-
-    const unsubTargets = onSnapshot(
-      collection(db, 'targets'),
-      (snap) => {
-        if (!snap.empty) {
-          const list = snap.docs
-            .map((d) => d.data() as TargetPage)
-            .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-          setTargets(list);
-        }
-      },
-      (err) => console.warn('[Firestore Client] targets listener error:', err.message)
-    );
-
-    const unsubReports = onSnapshot(
-      query(collection(db, 'reports'), orderBy('timestamp', 'desc'), limit(50)),
-      (snap) => {
-        if (!snap.empty) {
-          setReports(snap.docs.map((d) => d.data() as AuditReport));
-        }
-      },
-      (err) => console.warn('[Firestore Client] reports listener error:', err.message)
-    );
-
-    const unsubSettings = onSnapshot(
-      doc(db, 'settings', 'app'),
-      (snap) => {
-        if (snap.exists()) {
-          setSettings((prev) => ({ ...prev, ...(snap.data() as Partial<AppSettings>) }));
-        }
-      },
-      (err) => console.warn('[Firestore Client] settings listener error:', err.message)
-    );
-
-    const unsubCron = onSnapshot(
-      doc(db, 'cronState', 'current'),
-      (snap) => {
-        if (snap.exists()) {
-          setCronState(snap.data() as SelfCronState);
-        }
-      },
-      (err) => console.warn('[Firestore Client] cronState listener error:', err.message)
-    );
-
-    return () => {
-      unsubTargets();
-      unsubReports();
-      unsubSettings();
-      unsubCron();
-    };
   }, []);
 
   const handleRunAll = async () => {
@@ -273,7 +211,6 @@ export default function Home() {
           targets={targets}
           onViewReports={() => setActiveTab('reports')}
           scheduleSummary={cronState?.scheduleDescription || settings.scheduleDescription}
-          isFirebaseSynced={isFirebaseSynced}
         />
 
         {/* Content Body */}

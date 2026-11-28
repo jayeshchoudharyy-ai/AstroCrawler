@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { TargetPage, AuditReport, AppSettings, SelfCronState } from './types';
-import { getAdminFirestore } from './firebaseAdmin';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const TARGETS_FILE = path.join(DATA_DIR, 'targets.json');
@@ -65,8 +64,8 @@ function ensureDirectoryExists() {
   }
 }
 
-export function getStorageBackend(): 'firebase' | 'local' {
-  return getAdminFirestore() ? 'firebase' : 'local';
+export function getStorageBackend(): 'local' {
+  return 'local';
 }
 
 /**
@@ -169,63 +168,11 @@ function writeLocalTargets(targets: TargetPage[]) {
 }
 
 export async function getTargets(): Promise<TargetPage[]> {
-  const db = getAdminFirestore();
-  if (!db) {
-    return readLocalTargets();
-  }
-
-  try {
-    const snap = await db.collection('targets').get();
-    let targets: TargetPage[] = snap.docs.map((d) => d.data() as TargetPage);
-
-    // Seed Firestore from local targets.json / .env if empty
-    if (targets.length === 0) {
-      targets = readLocalTargets();
-      if (targets.length > 0) {
-        const batch = db.batch();
-        for (const t of targets) {
-          batch.set(db.collection('targets').doc(t.id), t);
-        }
-        await batch.commit();
-      }
-      return targets;
-    }
-
-    // Merge any new envTargets into Firestore
-    const envTargets = getEnvTargets();
-    const batch = db.batch();
-    let hasNew = false;
-    for (const envT of envTargets) {
-      const existing = targets.find(
-        (t) => t.url.toLowerCase() === envT.url.toLowerCase()
-      );
-      if (!existing) {
-        targets.push(envT);
-        batch.set(db.collection('targets').doc(envT.id), envT);
-        hasNew = true;
-      }
-    }
-    if (hasNew) {
-      await batch.commit();
-    }
-
-    return targets.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  } catch (err) {
-    console.error('[Firestore] Error reading targets, falling back to local:', err);
-    return readLocalTargets();
-  }
+  return readLocalTargets();
 }
 
 export async function saveTargets(targets: TargetPage[]): Promise<void> {
   writeLocalTargets(targets);
-  const db = getAdminFirestore();
-  if (!db) return;
-
-  const batch = db.batch();
-  for (const t of targets) {
-    batch.set(db.collection('targets').doc(t.id), t);
-  }
-  await batch.commit();
 }
 
 export async function addTarget(
@@ -236,11 +183,6 @@ export async function addTarget(
     id: `target-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     createdAt: new Date().toISOString(),
   };
-
-  const db = getAdminFirestore();
-  if (db) {
-    await db.collection('targets').doc(newTarget.id).set(newTarget);
-  }
 
   const local = readLocalTargets();
   local.push(newTarget);
@@ -253,27 +195,6 @@ export async function updateTarget(
   id: string,
   updates: Partial<TargetPage>
 ): Promise<TargetPage | null> {
-  const db = getAdminFirestore();
-  if (db) {
-    const docRef = db.collection('targets').doc(id);
-    const snap = await docRef.get();
-    if (!snap.exists) return null;
-    const updated = { ...(snap.data() as TargetPage), ...updates };
-    await docRef.set(updated, { merge: true });
-
-    // Keep local mirror in sync if available
-    try {
-      const local = readLocalTargets();
-      const idx = local.findIndex((t) => t.id === id);
-      if (idx !== -1) {
-        local[idx] = updated;
-        writeLocalTargets(local);
-      }
-    } catch {}
-
-    return updated;
-  }
-
   const targets = readLocalTargets();
   const index = targets.findIndex((t) => t.id === id);
   if (index === -1) return null;
@@ -283,21 +204,14 @@ export async function updateTarget(
 }
 
 export async function deleteTarget(id: string): Promise<boolean> {
-  const db = getAdminFirestore();
-  if (db) {
-    await db.collection('targets').doc(id).delete();
-  }
-
   const targets = readLocalTargets();
   const filtered = targets.filter((t) => t.id !== id);
-  const removedLocally = filtered.length < targets.length;
-  if (removedLocally) {
-    writeLocalTargets(filtered);
-  }
-  return db ? true : removedLocally;
+  if (filtered.length === targets.length) return false;
+  writeLocalTargets(filtered);
+  return true;
 }
 
-function readLocalReports(): AuditReport[] {
+export async function getReports(): Promise<AuditReport[]> {
   ensureDirectoryExists();
   if (!fs.existsSync(REPORTS_FILE)) {
     return [];
@@ -315,55 +229,14 @@ function readLocalReports(): AuditReport[] {
   }
 }
 
-export async function getReports(): Promise<AuditReport[]> {
-  const db = getAdminFirestore();
-  if (!db) {
-    return readLocalReports();
-  }
-
-  try {
-    const snap = await db
-      .collection('reports')
-      .orderBy('timestamp', 'desc')
-      .limit(50)
-      .get();
-
-    if (snap.empty) {
-      const local = readLocalReports();
-      if (local.length > 0) {
-        const batch = db.batch();
-        for (const r of local.slice(0, 25)) {
-          batch.set(db.collection('reports').doc(r.id), r);
-        }
-        await batch.commit();
-      }
-      return local;
-    }
-
-    return snap.docs.map((d) => d.data() as AuditReport);
-  } catch (err) {
-    console.error('[Firestore] Error reading reports, falling back to local:', err);
-    return readLocalReports();
-  }
-}
-
 export async function saveReport(report: AuditReport): Promise<void> {
-  try {
-    ensureDirectoryExists();
-    const reports = readLocalReports();
-    const updated = [report, ...reports].slice(0, 50);
-    fs.writeFileSync(REPORTS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('Could not write local reports.json:', err);
-  }
-
-  const db = getAdminFirestore();
-  if (db) {
-    await db.collection('reports').doc(report.id).set(report);
-  }
+  ensureDirectoryExists();
+  const reports = await getReports();
+  const updated = [report, ...reports].slice(0, 50);
+  fs.writeFileSync(REPORTS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
 }
 
-function readLocalSettings(): AppSettings {
+export async function getSettings(): Promise<AppSettings> {
   ensureDirectoryExists();
   if (!fs.existsSync(SETTINGS_FILE)) {
     try {
@@ -386,60 +259,18 @@ function readLocalSettings(): AppSettings {
   }
 }
 
-export async function getSettings(): Promise<AppSettings> {
-  const db = getAdminFirestore();
-  if (!db) {
-    return readLocalSettings();
-  }
-
-  try {
-    const doc = await db.collection('settings').doc('app').get();
-    if (!doc.exists) {
-      const local = readLocalSettings();
-      await db.collection('settings').doc('app').set(local);
-      return local;
-    }
-    return { ...DEFAULT_SETTINGS, ...(doc.data() as Partial<AppSettings>) };
-  } catch (err) {
-    console.error('[Firestore] Error reading settings, falling back to local:', err);
-    return readLocalSettings();
-  }
-}
-
 export async function saveSettings(
   settings: Partial<AppSettings>
 ): Promise<AppSettings> {
   const current = await getSettings();
   const updated: AppSettings = { ...current, ...settings };
 
-  try {
-    ensureDirectoryExists();
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('Could not write local settings.json:', err);
-  }
-
-  const db = getAdminFirestore();
-  if (db) {
-    await db.collection('settings').doc('app').set(updated, { merge: true });
-  }
-
+  ensureDirectoryExists();
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
   return updated;
 }
 
 export async function getCronStateFromStore(): Promise<Partial<SelfCronState>> {
-  const db = getAdminFirestore();
-  if (db) {
-    try {
-      const doc = await db.collection('cronState').doc('current').get();
-      if (doc.exists) {
-        return doc.data() as Partial<SelfCronState>;
-      }
-    } catch (err) {
-      console.error('[Firestore] Error reading cronState:', err);
-    }
-  }
-
   try {
     ensureDirectoryExists();
     if (fs.existsSync(CRON_STATE_FILE)) {
@@ -457,14 +288,5 @@ export async function saveCronStateToStore(state: SelfCronState): Promise<void> 
     fs.writeFileSync(CRON_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Could not write local cron-state.json:', err);
-  }
-
-  const db = getAdminFirestore();
-  if (db) {
-    try {
-      await db.collection('cronState').doc('current').set(state, { merge: true });
-    } catch (err) {
-      console.error('[Firestore] Error saving cronState:', err);
-    }
   }
 }

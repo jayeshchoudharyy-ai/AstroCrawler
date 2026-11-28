@@ -5,7 +5,7 @@
   "timezone": "Asia/Kolkata",
   "scheduleDescription": "Twice daily at 9:00 AM, 9:00 PM IST",
   "nextRunIST": "Today at 9:00 PM IST",
-  "nextRunISO": "2026-11-27T15:30:00.000Z",
+  "nextRunISO": "2026-11-28T15:30:00.000Z",
   "lastRunAt": "2026-11-27T07:16:37.229Z",
   "lastTrigger": "manual",
   "lastDurationMs": 58744,

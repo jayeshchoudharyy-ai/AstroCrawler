@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -44,9 +44,6 @@ jobs:
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
           MONITORED_URLS: ${{ secrets.MONITORED_URLS || vars.MONITORED_URLS }}
           DEFAULT_RAZORPAY_LINK: ${{ vars.DEFAULT_RAZORPAY_LINK || 'https://pages.razorpay.com/' }}
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
           SINGLE_URL: ${{ inputs.single_url }}
           FAIL_ON_ERROR: ${{ inputs.fail_on_error != false }}
         run: npx tsx scripts/run-audit.ts

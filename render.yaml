@@ -1,16 +1,17 @@
 services:
   - type: web
     name: astrocrawler
-    runtime: docker
+    runtime: node
     plan: free
-    dockerfilePath: ./Dockerfile
+    buildCommand: PLAYWRIGHT_BROWSERS_PATH=0 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium && npm run build
+    startCommand: PLAYWRIGHT_BROWSERS_PATH=0 npm run start
     healthCheckPath: /api/cron
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
       - key: DEFAULT_RAZORPAY_LINK
         value: https://pages.razorpay.com/
       - key: RESEND_API_KEY
@@ -18,16 +19,4 @@ services:
       - key: RESEND_FROM
         sync: false
       - key: MONITORED_URLS
-        sync: false
-      - key: FIREBASE_PROJECT_ID
-        sync: false
-      - key: FIREBASE_CLIENT_EMAIL
-        sync: false
-      - key: FIREBASE_PRIVATE_KEY
-        sync: false
-      - key: NEXT_PUBLIC_FIREBASE_API_KEY
-        sync: false
-      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-        sync: false
-      - key: NEXT_PUBLIC_FIREBASE_APP_ID
         sync: false

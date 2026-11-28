@@ -27,7 +27,6 @@ interface TopHeaderProps {
   targets?: TargetPage[];
   onViewReports?: () => void;
   scheduleSummary?: string;
-  isFirebaseSynced?: boolean;
 }
 
 interface ErrorNotificationItem {
@@ -47,7 +46,6 @@ export default function TopHeader({
   targets = [],
   onViewReports,
   scheduleSummary = '9:00 AM & 9:00 PM',
-  isFirebaseSynced = false,
 }: TopHeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -172,27 +170,6 @@ export default function TopHeader({
       {/* Right: Quick Status Pills & Icons */}
       <div className="flex items-center space-x-2 sm:space-x-3">
         
-        {/* Firebase Sync Status Pill */}
-        <div
-          title={
-            isFirebaseSynced
-              ? 'Connected to Cloud Firestore with real-time sync'
-              : 'Using local JSON storage (add Firebase keys in .env.local for cloud sync)'
-          }
-          className={`hidden sm:flex items-center space-x-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
-            isFirebaseSynced
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400'
-              : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400'
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              isFirebaseSynced ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-            }`}
-          />
-          <span>{isFirebaseSynced ? 'Firebase Sync' : 'Local Store'}</span>
-        </div>
-
         {/* Schedule Info Pill */}
         <div className="hidden md:flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 max-w-[220px]">
           <Clock className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
