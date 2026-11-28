@@ -8,12 +8,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 WORKDIR /app
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build
 
 ENV NODE_ENV=production
 ENV PORT=3000
