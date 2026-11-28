@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (isAutoCheck) {
-      const checkRes = await checkAndRunDueSchedule(5);
+      const checkRes = await checkAndRunDueSchedule(10);
       const cronState = await getSelfCronState();
       return NextResponse.json({
         success: true,

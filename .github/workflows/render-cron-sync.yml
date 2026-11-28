@@ -1,0 +1,22 @@
+name: Render Automation Timing Sync
+
+on:
+  schedule:
+    # Pings Render every 10 minutes so custom UI-configured Automation Timing & Count runs execute reliably
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-render-cron:
+    name: Trigger Due Render Schedule
+    runs-on: ubuntu-latest
+    if: ${{ vars.RENDER_APP_URL != '' || secrets.RENDER_APP_URL != '' }}
+
+    steps:
+      - name: Call Render /api/cron?auto=true
+        env:
+          RENDER_URL: ${{ vars.RENDER_APP_URL || secrets.RENDER_APP_URL }}
+        run: |
+          TARGET="${RENDER_URL%/}/api/cron?auto=true"
+          echo "Checking due schedule at: $TARGET"
+          curl -fsSL --max-time 120 "$TARGET"
