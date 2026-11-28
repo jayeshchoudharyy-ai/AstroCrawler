@@ -65,7 +65,7 @@ export default function MonitoringTable({
   const renderUptimeBars = (target: TargetPage) => {
     const isChecked = !!target.lastCheckedAt;
     const isPassing = target.lastSummary === 'PASS';
-    const totalBars = 12;
+    const totalBars = 10;
 
     let successPercentage = '100.0%';
     if (!isChecked) {
@@ -77,7 +77,7 @@ export default function MonitoringTable({
     return (
       <div className="flex flex-col space-y-1">
         <div className="flex items-center space-x-1.5">
-          <div className="flex items-center space-x-0.5">
+          <div className="flex items-center space-x-[2px]">
             {Array.from({ length: totalBars }).map((_, i) => {
               let barColor = 'bg-slate-700 dark:bg-slate-800';
 
@@ -85,7 +85,7 @@ export default function MonitoringTable({
                 if (isPassing) {
                   barColor = 'bg-emerald-500';
                 } else {
-                  barColor = i >= 10 ? 'bg-rose-500' : 'bg-emerald-500';
+                  barColor = i >= 8 ? 'bg-rose-500' : 'bg-emerald-500';
                 }
               }
 
@@ -244,13 +244,13 @@ export default function MonitoringTable({
             {/* Table Header */}
             <thead>
               <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-800/80 dark:text-slate-400">
-                <th className="py-3.5 pl-4 pr-2.5">Service Name</th>
-                <th className="hidden xl:table-cell py-3.5 px-2.5">Type</th>
-                <th className="py-3.5 px-2.5">Status</th>
-                <th className="py-3.5 px-2.5">Response</th>
-                <th className="py-3.5 px-2.5">Uptime</th>
-                <th className="py-3.5 px-2.5">Last Checked</th>
-                <th className="py-3.5 pl-2.5 pr-4 text-right">Actions</th>
+                <th className="py-3.5 pl-4 pr-2">Service Name</th>
+                <th className="hidden xl:table-cell py-3.5 px-2 whitespace-nowrap">Type</th>
+                <th className="py-3.5 px-2 whitespace-nowrap">Status</th>
+                <th className="hidden sm:table-cell py-3.5 px-2 whitespace-nowrap">Response</th>
+                <th className="hidden md:table-cell py-3.5 px-2 whitespace-nowrap">Uptime</th>
+                <th className="py-3.5 px-2 whitespace-nowrap">Last Checked</th>
+                <th className="py-3.5 pl-2 pr-4 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
 
@@ -273,7 +273,7 @@ export default function MonitoringTable({
                       className="group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                     >
                       {/* 1. Service Name & URL */}
-                      <td className="py-3.5 pl-4 pr-2.5 max-w-[190px] xl:max-w-[260px]">
+                      <td className="py-3.5 pl-4 pr-2 max-w-[160px] lg:max-w-[200px] xl:max-w-[240px]">
                         <div className="font-bold text-slate-900 dark:text-white truncate">
                           {target.name}
                         </div>
@@ -289,29 +289,29 @@ export default function MonitoringTable({
                       </td>
 
                       {/* 2. Service Type */}
-                      <td className="hidden xl:table-cell py-3.5 px-2.5 whitespace-nowrap">
+                      <td className="hidden xl:table-cell py-3.5 px-2 whitespace-nowrap">
                         <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
                           playwright
                         </span>
                       </td>
 
                       {/* 3. Service Status */}
-                      <td className="py-3.5 px-2.5 whitespace-nowrap">
+                      <td className="py-3.5 px-2 whitespace-nowrap">
                         {renderStatusPill(target)}
                       </td>
 
                       {/* 4. Response Time */}
-                      <td className="py-3.5 px-2.5 whitespace-nowrap font-mono font-medium text-slate-700 dark:text-slate-300">
+                      <td className="hidden sm:table-cell py-3.5 px-2 whitespace-nowrap font-mono font-medium text-slate-700 dark:text-slate-300">
                         {loadTime}
                       </td>
 
                       {/* 5. Uptime Bar Graph */}
-                      <td className="py-3.5 px-2.5 whitespace-nowrap">
+                      <td className="hidden md:table-cell py-3.5 px-2 whitespace-nowrap">
                         {renderUptimeBars(target)}
                       </td>
 
                       {/* 6. Last Checked */}
-                      <td className="py-3.5 px-2.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                      <td className="py-3.5 px-2 whitespace-nowrap text-slate-500 dark:text-slate-400">
                         <div className="flex items-center space-x-1 text-xs">
                           <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                           <span>{formatLastChecked(target.lastCheckedAt)}</span>
@@ -319,7 +319,7 @@ export default function MonitoringTable({
                       </td>
 
                       {/* 7. Action Button */}
-                      <td className="py-3.5 pl-2.5 pr-4 whitespace-nowrap text-right">
+                      <td className="py-3.5 pl-2 pr-4 whitespace-nowrap text-right">
                         <button
                           onClick={() => onAuditSingle(target)}
                           disabled={isAuditing}
