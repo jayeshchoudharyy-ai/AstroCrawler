@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { auditPage } from './crawler';
+import { auditPage, launchAuditBrowser } from './crawler';
 import {
   getTargets,
   updateTarget,
@@ -204,24 +204,32 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
     }
 
     const results: PageAuditResult[] = [];
+    const sharedBrowser = await launchAuditBrowser();
 
-    for (const target of targets) {
-      try {
-        const expectedRzp = target.expectedRazorpayLink || defaultRzp;
-        const res = await auditPage(target.url, expectedRzp, target.name);
-        results.push(res);
+    try {
+      for (const target of targets) {
+        try {
+          const expectedRzp = target.expectedRazorpayLink || defaultRzp;
+          const res = await auditPage(target.url, expectedRzp, target.name, {
+            browser: sharedBrowser,
+            maxRetries: 1,
+          });
+          results.push(res);
 
-        await updateTarget(target.id, {
-          lastCheckedAt: res.checkedAt,
-          lastStatus: res.statusCode,
-          lastSummary: res.summary,
-          lastButtonsCount: res.totalButtonsFound,
-          lastMatchingCount: res.matchingButtonsCount,
-          lastLoadTimeMs: res.loadTimeMs,
-        });
-      } catch (err: any) {
-        console.error(`[Self-Cron] Error auditing ${target.url}:`, err);
+          await updateTarget(target.id, {
+            lastCheckedAt: res.checkedAt,
+            lastStatus: res.statusCode,
+            lastSummary: res.summary,
+            lastButtonsCount: res.totalButtonsFound,
+            lastMatchingCount: res.matchingButtonsCount,
+            lastLoadTimeMs: res.loadTimeMs,
+          });
+        } catch (err: any) {
+          console.error(`[Self-Cron] Error auditing ${target.url}:`, err);
+        }
       }
+    } finally {
+      await sharedBrowser.close().catch(() => {});
     }
 
     const totalPages = results.length;

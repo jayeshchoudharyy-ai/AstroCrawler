@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auditPage } from '@/lib/crawler';
+import { auditPage, launchAuditBrowser } from '@/lib/crawler';
 import { getTargets, addTarget, updateTarget, saveReport, getSettings } from '@/lib/store';
 import { sendAuditReportEmail } from '@/lib/email';
 import { PageAuditResult, AuditReport } from '@/lib/types';
@@ -39,27 +39,33 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      for (const target of targets) {
-        try {
-          const res = await auditPage(
-            target.url,
-            target.expectedRazorpayLink || defaultRzp,
-            target.name
-          );
-          results.push(res);
+      const sharedBrowser = await launchAuditBrowser();
+      try {
+        for (const target of targets) {
+          try {
+            const res = await auditPage(
+              target.url,
+              target.expectedRazorpayLink || defaultRzp,
+              target.name,
+              { browser: sharedBrowser, maxRetries: 1 }
+            );
+            results.push(res);
 
-          // Update target status in store
-          await updateTarget(target.id, {
-            lastCheckedAt: res.checkedAt,
-            lastStatus: res.statusCode,
-            lastSummary: res.summary,
-            lastButtonsCount: res.totalButtonsFound,
-            lastMatchingCount: res.matchingButtonsCount,
-            lastLoadTimeMs: res.loadTimeMs,
-          });
-        } catch (itemErr: any) {
-          console.error(`Error auditing ${target.url}:`, itemErr);
+            // Update target status in store
+            await updateTarget(target.id, {
+              lastCheckedAt: res.checkedAt,
+              lastStatus: res.statusCode,
+              lastSummary: res.summary,
+              lastButtonsCount: res.totalButtonsFound,
+              lastMatchingCount: res.matchingButtonsCount,
+              lastLoadTimeMs: res.loadTimeMs,
+            });
+          } catch (itemErr: any) {
+            console.error(`Error auditing ${target.url}:`, itemErr);
+          }
         }
+      } finally {
+        await sharedBrowser.close().catch(() => {});
       }
     } else {
       // Audit single target on the fly

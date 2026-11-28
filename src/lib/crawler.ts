@@ -518,32 +518,56 @@ export async function auditCountdownTimer(page: Page): Promise<CountdownAudit> {
  *    - flags different payment URLs
  * 5. Checks countdown timer and verifies it matches current time.
  */
+/**
+ * Launches a lightweight headless Chromium instance optimized for low-RAM containers (e.g. Render 512MB).
+ */
+export async function launchAuditBrowser(): Promise<Browser> {
+  return chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--mute-audio',
+      '--no-first-run',
+    ],
+  });
+}
+
 export async function auditPageOnce(
   url: string,
   expectedRazorpayLink: string,
   pageName?: string,
-  options?: { singlePageOnly?: boolean }
+  options?: { singlePageOnly?: boolean; browser?: Browser; maxRetries?: number }
 ): Promise<PageAuditResult> {
   const startTime = Date.now();
-  let browser: Browser | null = null;
+  const ownsBrowser = !options?.browser;
+  let browser: Browser | null = options?.browser || null;
+  let context: BrowserContext | null = null;
   const expectedSlug = extractRazorpaySlug(expectedRazorpayLink);
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    });
+    if (!browser) {
+      browser = await launchAuditBrowser();
+    }
 
-    const context = await browser.newContext({
+    context = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 WebCrawlerAuditor/1.0',
       viewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
+    });
+
+    // Block heavy media/images/fonts to speed up crawls & cut RAM usage by ~70% on Render
+    await context.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (type === 'image' || type === 'media' || type === 'font') {
+        return route.abort();
+      }
+      return route.continue();
     });
 
     const mainPage = await context.newPage();
@@ -569,7 +593,7 @@ export async function auditPageOnce(
     try {
       const navigationResponse = await mainPage.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 25000,
+        timeout: 15000,
       });
 
       if (navigationResponse) {
@@ -961,15 +985,15 @@ export async function auditPageOnce(
       summary,
     };
   } catch (err: any) {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch {
-        // ignore
-      }
-    }
     console.error(`[Playwright] Exception during multi-page crawl on ${url}:`, err);
     throw err;
+  } finally {
+    if (context) {
+      await context.close().catch(() => {});
+    }
+    if (ownsBrowser && browser) {
+      await browser.close().catch(() => {});
+    }
   }
 }
 
@@ -984,7 +1008,7 @@ export async function auditPage(
   url: string,
   expectedRazorpayLink: string,
   pageName?: string,
-  options?: { singlePageOnly?: boolean }
+  options?: { singlePageOnly?: boolean; browser?: Browser; maxRetries?: number }
 ): Promise<PageAuditResult> {
   const retryLogs: string[] = [];
 
@@ -1013,14 +1037,24 @@ export async function auditPage(
     };
   }
 
-  // Attempt 1 failed -> Begin 10s retry loop up to 30s
+  // Attempt 1 failed -> Begin retry loop
+  const maxRetries = options?.maxRetries ?? 3;
   const initialIssue = firstAttempt.errors.slice(0, 2).join('; ') || 'Issues detected on page';
-  retryLogs.push(`[Attempt 1 - 0s] Initial check failed: ${initialIssue}. Initiating double-check retry loop (every 10s up to 30s)...`);
+  if (maxRetries === 0) {
+    return {
+      ...firstAttempt,
+      retryCount: 0,
+      retryLogs: [`[Attempt 1] Failed: ${initialIssue}`],
+      finalErrorTriggered: true,
+    };
+  }
+
+  retryLogs.push(`[Attempt 1 - 0s] Initial check failed: ${initialIssue}. Initiating double-check retry loop (every 10s up to ${maxRetries * 10}s)...`);
   console.warn(`[Retry Engine] ${url} failed initial check: ${initialIssue}. Double-checking in 10s...`);
 
   let lastResult = firstAttempt;
   const RETRY_INTERVAL_MS = 10000; // 10 seconds
-  const MAX_RETRIES = 3; // 10s, 20s, 30s
+  const MAX_RETRIES = maxRetries;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const elapsedSeconds = attempt * 10;

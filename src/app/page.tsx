@@ -89,10 +89,13 @@ export default function Home() {
   const handleRunAll = async () => {
     setIsRunningAll(true);
     setBannerNotice(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 110000);
     try {
       const res = await fetch('/api/crawl', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           auditAll: true,
           sendEmail: true,
@@ -118,11 +121,16 @@ export default function Home() {
         message: `Audit completed across ${data.report.totalPages} page(s). ${emailNote}`,
       });
     } catch (err: any) {
+      const msg =
+        err.name === 'AbortError'
+          ? 'Audit request timed out on server. Check Audit Reports or run pages individually.'
+          : err.message || 'An error occurred during full audit';
       setBannerNotice({
         type: 'error',
-        message: err.message || 'An error occurred during full audit',
+        message: msg,
       });
     } finally {
+      clearTimeout(timeoutId);
       setIsRunningAll(false);
     }
   };
