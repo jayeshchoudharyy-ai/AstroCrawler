@@ -14,6 +14,82 @@ import { sendAuditReportEmail, DEFAULT_RECIPIENT } from './email';
 import { PageAuditResult, AuditReport, SelfCronState } from './types';
 
 let isExecuting = false;
+let lastTriggeredSlotKey = '';
+
+function getCurrentTimeHHMM(d: Date = new Date(), timezone: string = 'Asia/Kolkata'): {
+  dateKey: string;
+  hhmm: string;
+  totalMinutes: number;
+} {
+  const parts = getISTDateParts(d, timezone);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    dateKey: `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`,
+    hhmm: `${pad(parts.hour)}:${pad(parts.minute)}`,
+    totalMinutes: parts.hour * 60 + parts.minute,
+  };
+}
+
+/**
+ * Checks if any configured automation time is due right now (or within a 5-minute wake-up grace window
+ * if the server just woke up from Render Free tier sleep) and triggers executeSelfCron('cron').
+ */
+export async function checkAndRunDueSchedule(graceMinutes: number = 1): Promise<{
+  triggered: boolean;
+  reason: string;
+}> {
+  if (isExecuting) {
+    return { triggered: false, reason: 'Audit already running' };
+  }
+
+  const settings = await getSettings();
+  if (settings.automationEnabled === false) {
+    return { triggered: false, reason: 'Automation paused' };
+  }
+
+  const timezone = settings.timezone || 'Asia/Kolkata';
+  const times =
+    settings.automationTimes && settings.automationTimes.length > 0
+      ? settings.automationTimes
+      : ['09:00', '21:00'];
+
+  const nowInfo = getCurrentTimeHHMM(new Date(), timezone);
+  const state = await getCronStateFromStore();
+
+  for (const slot of times) {
+    const [hStr, mStr] = slot.split(':');
+    const slotMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
+    if (isNaN(slotMinutes)) continue;
+
+    const diffMinutes = nowInfo.totalMinutes - slotMinutes;
+    if (diffMinutes >= 0 && diffMinutes <= graceMinutes) {
+      const slotKey = `${nowInfo.dateKey} ${slot}`;
+      if (lastTriggeredSlotKey === slotKey) {
+        return { triggered: false, reason: `Already triggered for ${slotKey}` };
+      }
+
+      // Check persisted lastRunAt so restarts/wakeups don't double-run the same slot
+      if (state.lastRunAt) {
+        const lastRunInfo = getCurrentTimeHHMM(new Date(state.lastRunAt), timezone);
+        if (
+          lastRunInfo.dateKey === nowInfo.dateKey &&
+          lastRunInfo.totalMinutes >= slotMinutes
+        ) {
+          return { triggered: false, reason: `Slot ${slot} already ran at ${lastRunInfo.hhmm}` };
+        }
+      }
+
+      lastTriggeredSlotKey = slotKey;
+      console.log(`[Self-Cron Watcher] Triggering due schedule ${slot} (${timezone})...`);
+      executeSelfCron('cron').catch((err) => {
+        console.error('[Self-Cron Watcher] Scheduled execution error:', err);
+      });
+      return { triggered: true, reason: `Triggered for ${slot} (${timezone})` };
+    }
+  }
+
+  return { triggered: false, reason: 'No schedule due right now' };
+}
 
 /**
  * Returns date and time breakdown in the configured timezone (default Asia/Kolkata)
@@ -365,6 +441,18 @@ export async function rescheduleSelfCron() {
     }
 
     globalObj.__selfCronInitialized = true;
+
+    // Start a 20-second watcher interval as a reliable safeguard alongside node-cron
+    // (always reads latest data/settings.json even across Next.js route/instrumentation contexts)
+    if (globalObj.__selfCronWatcher) {
+      clearInterval(globalObj.__selfCronWatcher);
+    }
+    globalObj.__selfCronWatcher = setInterval(() => {
+      checkAndRunDueSchedule(1).catch((err) => {
+        console.error('[Self-Cron Watcher] Interval error:', err);
+      });
+    }, 20000);
+
     console.log(`[Self-Cron] Registered ${times.length} scheduled task(s): ${description}`);
 
     await saveSelfCronState({

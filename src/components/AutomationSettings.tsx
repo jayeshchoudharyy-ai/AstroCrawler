@@ -366,6 +366,12 @@ export default function AutomationSettings({
           )}
         </div>
 
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-[11px] text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-200/90 leading-relaxed">
+          <strong>Note for Render Free Plan:</strong> Render&apos;s free tier puts the server to sleep after 15 minutes of inactivity. To make sure your custom timings fire on Render even while idle, add a free 5-minute ping on{' '}
+          <code className="rounded bg-amber-200/50 dark:bg-amber-900/40 px-1 py-0.5 font-mono">cron-job.org</code> to{' '}
+          <code className="rounded bg-amber-200/50 dark:bg-amber-900/40 px-1 py-0.5 font-mono">/api/cron?auto=true</code>.
+        </div>
+
         <div className="flex items-center justify-end pt-2">
           <button
             type="submit"
