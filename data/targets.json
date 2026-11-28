@@ -6,12 +6,12 @@
     "isActive": true,
     "id": "target-1795584630862-z04kg",
     "createdAt": "2026-11-25T05:30:30.862Z",
-    "lastCheckedAt": "2026-11-27T07:15:45.082Z",
+    "lastCheckedAt": "2026-11-28T08:04:45.194Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 12,
     "lastMatchingCount": 12,
-    "lastLoadTimeMs": 3760,
+    "lastLoadTimeMs": 4635,
     "isEnvConfigured": true
   },
   {
@@ -22,12 +22,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:15:51.044Z",
+    "lastCheckedAt": "2026-11-28T08:04:47.235Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 12,
     "lastMatchingCount": 12,
-    "lastLoadTimeMs": 1770
+    "lastLoadTimeMs": 4793
   },
   {
     "id": "env-target-3-grow_askpuran_com_reiki_ga",
@@ -37,12 +37,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:15:56.427Z",
+    "lastCheckedAt": "2026-11-28T08:04:47.044Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 12,
     "lastMatchingCount": 12,
-    "lastLoadTimeMs": 1651
+    "lastLoadTimeMs": 4342
   },
   {
     "id": "env-target-4-grow_askpuran_com_reiki_new_og",
@@ -52,12 +52,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:15:59.798Z",
+    "lastCheckedAt": "2026-11-28T08:04:49.415Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 7,
     "lastMatchingCount": 7,
-    "lastLoadTimeMs": 1732
+    "lastLoadTimeMs": 2678
   },
   {
     "id": "env-target-5-grow_askpuran_com_reiki_new_ga",
@@ -67,12 +67,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:03.859Z",
+    "lastCheckedAt": "2026-11-28T08:04:53.356Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 7,
     "lastMatchingCount": 7,
-    "lastLoadTimeMs": 1397
+    "lastLoadTimeMs": 3281
   },
   {
     "id": "env-target-6-grow_askpuran_com_reiki_new_fb",
@@ -82,12 +82,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:08.482Z",
+    "lastCheckedAt": "2026-11-28T08:04:52.840Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 7,
     "lastMatchingCount": 7,
-    "lastLoadTimeMs": 1725
+    "lastLoadTimeMs": 2788
   },
   {
     "id": "env-target-7-grow_askpuran_com_women_specific_wnfb",
@@ -97,12 +97,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:12.537Z",
+    "lastCheckedAt": "2026-11-28T08:04:54.072Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 5,
     "lastMatchingCount": 5,
-    "lastLoadTimeMs": 1852
+    "lastLoadTimeMs": 2751
   },
   {
     "id": "env-target-8-grow_askpuran_com_women_specific_wnga",
@@ -112,12 +112,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:17.309Z",
+    "lastCheckedAt": "2026-11-28T08:04:56.401Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 5,
     "lastMatchingCount": 5,
-    "lastLoadTimeMs": 1992
+    "lastLoadTimeMs": 1731
   },
   {
     "id": "env-target-9-grow_askpuran_com_reiki_master_teacher_webinar_l4",
@@ -127,12 +127,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:25.934Z",
+    "lastCheckedAt": "2026-11-28T08:05:03.299Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 2,
     "lastMatchingCount": 2,
-    "lastLoadTimeMs": 1579
+    "lastLoadTimeMs": 1701
   },
   {
     "id": "env-target-10-grow_askpuran_com_thank_you",
@@ -142,12 +142,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:28.848Z",
+    "lastCheckedAt": "2026-11-28T08:04:56.852Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 0,
     "lastMatchingCount": 0,
-    "lastLoadTimeMs": 1263
+    "lastLoadTimeMs": 1462
   },
   {
     "id": "env-target-11-grow_askpuran_com_thank_you_fb",
@@ -157,12 +157,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:31.670Z",
+    "lastCheckedAt": "2026-11-28T08:04:59.661Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 0,
     "lastMatchingCount": 0,
-    "lastLoadTimeMs": 1193
+    "lastLoadTimeMs": 1825
   },
   {
     "id": "env-target-12-grow_askpuran_com_thank_you_ga",
@@ -172,12 +172,12 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:34.349Z",
+    "lastCheckedAt": "2026-11-28T08:05:00.666Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 0,
     "lastMatchingCount": 0,
-    "lastLoadTimeMs": 1071
+    "lastLoadTimeMs": 2583
   },
   {
     "id": "env-target-13-grow_askpuran_com_thank_you_for_submit_reiki_master_teacher_workshop_l4",
@@ -187,11 +187,11 @@
     "isActive": true,
     "isEnvConfigured": true,
     "createdAt": "2026-11-25T07:51:19.056Z",
-    "lastCheckedAt": "2026-11-27T07:16:37.227Z",
+    "lastCheckedAt": "2026-11-28T08:05:02.858Z",
     "lastStatus": 200,
     "lastSummary": "PASS",
     "lastButtonsCount": 0,
     "lastMatchingCount": 0,
-    "lastLoadTimeMs": 1242
+    "lastLoadTimeMs": 1724
   }
 ]
