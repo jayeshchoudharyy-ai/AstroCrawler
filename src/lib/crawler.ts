@@ -230,7 +230,7 @@ async function safelyClickAndCaptureRedirect(
             capturedRedirectUrl = frame.url();
           }
         });
-        await popup.waitForLoadState('domcontentloaded', { timeout: 2000 }).catch(() => {});
+        await popup.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
         if (!capturedRedirectUrl || capturedRedirectUrl === 'about:blank') {
           capturedRedirectUrl = popup.url();
         }
@@ -279,25 +279,28 @@ async function safelyClickAndCaptureRedirect(
     });
 
     // Navigate to page
-    await clickPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+    await clickPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
     // Locate candidate buttons on the page
     const buttons = clickPage.locator(
       'button, [role="button"], input[type="button"], input[type="submit"], a, .btn, .button, .cta'
     );
     const count = await buttons.count();
+    let clickCompleted = false;
 
     if (buttonIndex < count) {
       const targetBtn = buttons.nth(buttonIndex);
 
-      // Perform safe click
+      // Perform safe click (5s timeout)
       await Promise.race([
-        targetBtn.click({ timeout: 2500 }),
-        new Promise((resolve) => setTimeout(resolve, 2600)),
+        targetBtn.click({ timeout: 5000 }).then(() => {
+          clickCompleted = true;
+        }),
+        new Promise((resolve) => setTimeout(resolve, 5100)),
       ]).catch(() => {});
 
       // Short wait to catch dynamic JS redirects
-      await clickPage.waitForTimeout(600);
+      await clickPage.waitForTimeout(800);
 
       // Check if window.open captured an URL
       const scriptUrls = await clickPage.evaluate(() => (window as any).__capturedUrls || []).catch(() => []);
@@ -320,6 +323,14 @@ async function safelyClickAndCaptureRedirect(
         redirectedUrl: capturedRedirectUrl,
         clickSuccess: true,
         method: popupOpened ? 'Popup Interception' : 'Safe Click Redirection',
+      };
+    }
+
+    if (clickCompleted && fallbackTargetUrl && fallbackTargetUrl.startsWith('http')) {
+      return {
+        redirectedUrl: fallbackTargetUrl,
+        clickSuccess: true,
+        method: 'Click Verified + Static Target',
       };
     }
   } catch (err: any) {
@@ -346,13 +357,40 @@ async function safelyClickAndCaptureRedirect(
 }
 
 /**
+ * Parses a countdown target date string with timezone awareness.
+ * If no explicit timezone is present, evaluates both IST (+05:30) and UTC so UTC cloud servers
+ * (e.g. Render) do not produce false timezone mismatch errors on IST landing pages.
+ */
+function parseTargetDateCandidates(dataDate: string): number[] {
+  const trimmed = dataDate.trim();
+  const hasExplicitTz = /(Z|[+-]\d{2}:?\d{2}|GMT|UTC|IST)$/i.test(trimmed);
+  const candidates: number[] = [];
+
+  const direct = new Date(trimmed).getTime();
+  if (!isNaN(direct)) {
+    candidates.push(direct);
+  }
+
+  if (!hasExplicitTz) {
+    // Try parsing as IST (+05:30) if format is YYYY-MM-DD HH:mm(:ss)
+    const isoLike = trimmed.replace(' ', 'T');
+    const istParsed = new Date(`${isoLike}+05:30`).getTime();
+    if (!isNaN(istParsed) && !candidates.includes(istParsed)) {
+      candidates.push(istParsed);
+    }
+  }
+
+  return candidates;
+}
+
+/**
  * Checks if a countdown timer is present on the page and verifies that it matches current time.
  * If target date has expired or displayed digits do not match current time, records an error.
  */
 export async function auditCountdownTimer(page: Page): Promise<CountdownAudit> {
   try {
     // Wait briefly for client-side JavaScript countdown scripts to hydrate and run
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1200);
 
     const timerData = await page.evaluate(() => {
       const selectors = [
@@ -411,11 +449,30 @@ export async function auditCountdownTimer(page: Page): Promise<CountdownAudit> {
     const dataDate = timerData.dataDate;
 
     if (dataDate) {
-      const targetTime = new Date(dataDate).getTime();
+      const targetCandidates = parseTargetDateCandidates(dataDate);
       const currentTime = now.getTime();
-      const diffMs = targetTime - currentTime;
 
-      if (!isNaN(targetTime)) {
+      if (targetCandidates.length > 0) {
+        // Pick candidate whose expected countdown is closest to displayed digits (or future)
+        let bestTargetTime = targetCandidates[0];
+        let bestDiffMs = bestTargetTime - currentTime;
+
+        for (const candidateMs of targetCandidates) {
+          const diff = candidateMs - currentTime;
+          if (diff > 0 && bestDiffMs <= 0) {
+            bestTargetTime = candidateMs;
+            bestDiffMs = diff;
+          } else if (diff > 0 && timerData.hours !== null) {
+            const cHours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const bHours = Math.floor((bestDiffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            if (Math.abs(cHours - timerData.hours) < Math.abs(bHours - timerData.hours)) {
+              bestTargetTime = candidateMs;
+              bestDiffMs = diff;
+            }
+          }
+        }
+
+        const diffMs = bestDiffMs;
         if (diffMs <= 0) {
           return {
             isPresent: true,
@@ -424,7 +481,7 @@ export async function auditCountdownTimer(page: Page): Promise<CountdownAudit> {
             isExpired: true,
             isMatched: false,
             status: 'EXPIRED',
-            message: `Countdown timer target date (${dataDate}) has expired relative to current time (${now.toLocaleString('en-IN')}).`,
+            message: `Countdown timer target date (${dataDate}) has expired relative to current time (${now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST).`,
           };
         }
 
@@ -537,6 +594,61 @@ export async function launchAuditBrowser(): Promise<Browser> {
   });
 }
 
+const SLOW_LOAD_THRESHOLD_MS = 5000;
+const MAIN_NAV_TIMEOUT_MS = 20000;
+const SUBPAGE_NAV_TIMEOUT_MS = 25000;
+const MAX_SUBPAGES_TO_CRAWL = 6;
+const SUBPAGE_CONCURRENCY = 3;
+
+/**
+ * Intelligent page readiness check without waiting for full networkidle:
+ * verifies DOM is interactive/complete and main body content is visible.
+ */
+async function waitForPageReady(page: Page): Promise<boolean> {
+  try {
+    await page.waitForFunction(
+      () => {
+        if (document.readyState === 'loading') return false;
+        const body = document.body;
+        if (!body) return false;
+        const style = window.getComputedStyle(body);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return (body.innerText || '').trim().length > 0 || body.children.length > 0;
+      },
+      { timeout: 3500 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Distinguishes temporary retryable errors (network, timeout, 429, 5xx)
+ * from permanent errors (invalid URL, 400, 401, 403, 404).
+ */
+function isRetryableFailure(res: PageAuditResult): boolean {
+  if (!res.isAvailable || res.statusCode === null) {
+    const reason = (res.statusText || res.errors.join(' ')).toLowerCase();
+    if (reason.includes('invalid url') || reason.includes('err_invalid_url')) {
+      return false;
+    }
+    return true;
+  }
+
+  const permanentCodes = [400, 401, 403, 404];
+  if (permanentCodes.includes(res.statusCode)) {
+    return false;
+  }
+
+  const retryableCodes = [429, 500, 502, 503, 504];
+  if (retryableCodes.includes(res.statusCode)) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function auditPageOnce(
   url: string,
   expectedRazorpayLink: string,
@@ -548,8 +660,39 @@ export async function auditPageOnce(
   let browser: Browser | null = options?.browser || null;
   let context: BrowserContext | null = null;
   const expectedSlug = extractRazorpaySlug(expectedRazorpayLink);
+  const consoleErrors: string[] = [];
 
   try {
+    // Validate URL format upfront (permanent error if invalid)
+    try {
+      new URL(url);
+    } catch {
+      return {
+        id: `audit-${Date.now()}`,
+        url,
+        pageName,
+        checkedAt: new Date().toISOString(),
+        isAvailable: false,
+        statusCode: null,
+        statusText: 'Invalid URL format',
+        isStatusValid: false,
+        loadTimeMs: 0,
+        expectedRazorpayLink,
+        expectedSlug,
+        crawledPages: [url],
+        totalButtonsFound: 0,
+        matchingButtonsCount: 0,
+        mismatchButtonsCount: 0,
+        buttons: [],
+        errors: [`Invalid URL format: "${url}"`],
+        summary: 'FAIL',
+        auditStatus: 'FAILED',
+        errorCategory: 'NETWORK',
+        failureReason: `Invalid URL format: "${url}"`,
+        consoleErrors: [],
+      };
+    }
+
     if (!browser) {
       browser = await launchAuditBrowser();
     }
@@ -572,7 +715,17 @@ export async function auditPageOnce(
 
     const mainPage = await context.newPage();
     mainPage.on('pageerror', (err) => {
+      const msg = `Uncaught page error: ${err.message}`;
+      consoleErrors.push(msg);
       console.warn(`[PageScript Note on ${url}]:`, err.message);
+    });
+    mainPage.on('console', (msg) => {
+      if (msg.type() === 'error') {
+        const text = msg.text();
+        if (text && !consoleErrors.includes(text)) {
+          consoleErrors.push(text.slice(0, 200));
+        }
+      }
     });
 
     let initialStatusCode: number | null = null;
@@ -593,7 +746,7 @@ export async function auditPageOnce(
     try {
       const navigationResponse = await mainPage.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 10000,
+        timeout: MAIN_NAV_TIMEOUT_MS,
       });
 
       if (navigationResponse) {
@@ -605,6 +758,9 @@ export async function auditPageOnce(
         initialStatusCode = initialStatusCode || 200;
         initialStatusText = initialStatusText || 'OK';
       }
+
+      // Intelligent readiness check (visible body content without waiting for networkidle)
+      await waitForPageReady(mainPage);
     } catch (navErr: any) {
       console.warn(`[Playwright] Navigation issue on ${url}:`, navErr.message);
       isAvailable = false;
@@ -639,24 +795,31 @@ export async function auditPageOnce(
         }
       }
 
-      // 1. Discover internal website pages (or audit single page only)
+      // 1. Discover internal website pages (max 6 subpages, or single page only)
       if (options?.singlePageOnly) {
         crawledPages = [url];
         console.log(`[Crawler] Single page inspection mode: checking only ${url}`);
       } else {
-        crawledPages = await discoverInternalPages(mainPage, url, 6);
+        crawledPages = await discoverInternalPages(mainPage, url, MAX_SUBPAGES_TO_CRAWL);
         console.log(`[Crawler] Discovered ${crawledPages.length} website page(s) to audit:`, crawledPages);
       }
 
-      // 2. Iterate through each page on the website to find and safely click payment buttons
-      for (const targetPageUrl of crawledPages) {
+      // 2. Process discovered pages with controlled concurrency (max 3 concurrently)
+      const auditSingleSubpage = async (targetPageUrl: string) => {
+        let scanPage: Page | null = null;
         try {
-          const scanPage = targetPageUrl === url ? mainPage : await context.newPage();
+          scanPage = targetPageUrl === url ? mainPage : await context!.newPage();
           if (targetPageUrl !== url) {
             scanPage.on('pageerror', (err) => {
-              console.warn(`[PageScript Note on ${targetPageUrl}]:`, err.message);
+              consoleErrors.push(`Subpage error (${targetPageUrl}): ${err.message}`);
             });
-            await scanPage.goto(targetPageUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+            await scanPage
+              .goto(targetPageUrl, {
+                waitUntil: 'domcontentloaded',
+                timeout: SUBPAGE_NAV_TIMEOUT_MS,
+              })
+              .catch(() => {});
+            await waitForPageReady(scanPage);
           }
 
           // Extract candidate buttons from DOM
@@ -757,7 +920,7 @@ export async function auditPageOnce(
           // 3. For each button on this page, safely click and capture destination redirect
           for (const item of extractedList) {
             const clickResult = await safelyClickAndCaptureRedirect(
-              context,
+              context!,
               targetPageUrl,
               item.elementIndex,
               item.targetUrl
@@ -813,17 +976,32 @@ export async function auditPageOnce(
             });
           }
 
-          if (targetPageUrl !== url) {
+          if (targetPageUrl !== url && scanPage) {
             await scanPage.close().catch(() => {});
           }
         } catch (pageErr: any) {
           console.warn(`[Crawler] Error auditing page ${targetPageUrl}:`, pageErr.message);
+          if (targetPageUrl !== url && scanPage) {
+            await scanPage.close().catch(() => {});
+          }
         }
-      }
-    }
+      };
 
-    await browser.close().catch(() => {});
-    browser = null;
+      // Controlled worker pool (max 3 subpages concurrently)
+      const queue = [...crawledPages];
+      const workers = Array.from(
+        { length: Math.min(SUBPAGE_CONCURRENCY, queue.length) },
+        async () => {
+          while (queue.length > 0) {
+            const nextUrl = queue.shift();
+            if (nextUrl) {
+              await auditSingleSubpage(nextUrl);
+            }
+          }
+        }
+      );
+      await Promise.all(workers);
+    }
 
     // 4. Button Redirection Consistency & Razorpay Comparison:
     const anyFailedRedirect = allButtons.filter((b) => b.redirectStatus === 'FAILED_TO_REDIRECT');
@@ -954,6 +1132,41 @@ export async function auditPageOnce(
       summary = 'WARNING';
     }
 
+    const isSlow = isAvailable && isStatusValid && loadTimeMs >= SLOW_LOAD_THRESHOLD_MS;
+    const auditStatus: PageAuditResult['auditStatus'] =
+      summary === 'FAIL'
+        ? 'FAILED'
+        : summary === 'WARNING'
+        ? 'WARNING'
+        : isSlow
+        ? 'SLOW'
+        : 'PASSED';
+
+    let errorCategory: PageAuditResult['errorCategory'] = 'NONE';
+    if (!isAvailable) {
+      errorCategory = (initialStatusText || '').toLowerCase().includes('timeout')
+        ? 'TIMEOUT'
+        : 'NETWORK';
+    } else if (!isStatusValid) {
+      errorCategory = 'HTTP_ERROR';
+    } else if (failedRedirectsCount > 0 || wrongDomainCount > 0 || differentUrlsCount > 0 || mismatchButtonsCount > 0) {
+      errorCategory = 'BUTTON_MISMATCH';
+    } else if (countdownTimer.isPresent && !countdownTimer.isMatched) {
+      errorCategory = 'COUNTDOWN_ERROR';
+    } else if (errors.length > 0) {
+      errorCategory = 'SCRIPT_ERROR';
+    }
+
+    let screenshotBase64: string | undefined;
+    if (summary !== 'PASS' && isAvailable && mainPage && !mainPage.isClosed()) {
+      try {
+        const buf = await mainPage.screenshot({ type: 'jpeg', quality: 45, fullPage: false });
+        screenshotBase64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
+      } catch {
+        // ignore screenshot failure
+      }
+    }
+
     return {
       id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       url,
@@ -983,6 +1196,11 @@ export async function auditPageOnce(
       buttons: allButtons,
       errors,
       summary,
+      auditStatus,
+      errorCategory,
+      failureReason: errors[0],
+      consoleErrors: consoleErrors.slice(0, 10),
+      screenshotBase64,
     };
   } catch (err: any) {
     console.error(`[Playwright] Exception during multi-page crawl on ${url}:`, err);
@@ -998,10 +1216,12 @@ export async function auditPageOnce(
 }
 
 /**
- * Main Audit Page with 30s Request/Response Timer & Retry Mechanism:
- * - Each request has a 10-second timeout.
- * - If a request fails, waits 1 second and sends another request (up to 3 retries within the 30s timer).
- * - Only if it still fails after 3 retries (or 30s total timer) is the error triggered.
+ * Main Audit Page with Intelligent Retry Mechanism:
+ * - Main page nav timeout: 20s, subpage nav timeout: 25s.
+ * - Max 2 retries after initial attempt with 2s and 4s delays.
+ * - Max total retry budget: 50 seconds per page.
+ * - Retries temporary network failures, timeouts, HTTP 429, 500, 502, 503, 504.
+ * - Does NOT retry permanent errors (invalid URLs, HTTP 400, 401, 403, 404).
  */
 export async function auditPage(
   url: string,
@@ -1010,13 +1230,13 @@ export async function auditPage(
   options?: { singlePageOnly?: boolean; browser?: Browser; maxRetries?: number }
 ): Promise<PageAuditResult> {
   const auditStartTime = Date.now();
-  const TOTAL_TIMER_MS = 30000; // 30-second total req/resp timer
-  const RETRY_WAIT_MS = 1000;   // 1-second wait before next request
-  const MAX_RETRIES = options?.maxRetries ?? 3; // 3 retries
+  const TOTAL_BUDGET_MS = 50000; // 50-second max retry budget per page
+  const RETRY_DELAYS_MS = [2000, 4000]; // 2s then 4s
+  const MAX_RETRIES = options?.maxRetries ?? 2;
 
   const retryLogs: string[] = [];
 
-  // Attempt 1 (Initial 10s request)
+  // Attempt 1 (Initial)
   const firstAttempt = await auditPageOnce(url, expectedRazorpayLink, pageName, options);
 
   const isFirstPassing =
@@ -1026,7 +1246,10 @@ export async function auditPage(
     firstAttempt.errors.length === 0;
 
   if (isFirstPassing) {
-    let successMsg = 'Check passed on initial attempt.';
+    let successMsg =
+      firstAttempt.auditStatus === 'SLOW'
+        ? `Check passed (Slow load: ${firstAttempt.loadTimeMs}ms).`
+        : 'Check passed on initial attempt.';
     if (firstAttempt.noButtonsAvailable) {
       successMsg = 'Check passed: HTTP 200 OK. No button available on page.';
     } else if (firstAttempt.isOtherSamePageRedirection) {
@@ -1041,31 +1264,38 @@ export async function auditPage(
     };
   }
 
-  // Attempt 1 failed -> Wait 1s and retry up to 3 times within the 30s timer
+  // Do not retry permanent errors (invalid URL, HTTP 400/401/403/404) or non-network content errors
   const initialIssue = firstAttempt.errors.slice(0, 2).join('; ') || 'Issues detected on page';
-  if (MAX_RETRIES === 0) {
+  if (MAX_RETRIES === 0 || !isRetryableFailure(firstAttempt)) {
     return {
       ...firstAttempt,
       retryCount: 0,
-      retryLogs: [`[Attempt 1] Failed: ${initialIssue}`],
+      retryLogs: [
+        `[Attempt 1] Permanent or non-retryable issue (HTTP ${firstAttempt.statusCode ?? 'N/A'}): ${initialIssue}`,
+      ],
       finalErrorTriggered: true,
     };
   }
 
-  retryLogs.push(`[Attempt 1] 10s request failed: ${initialIssue}. Waiting 1s before retry (up to ${MAX_RETRIES} retries / 30s timer)...`);
-  console.warn(`[Retry Engine] ${url} failed initial check: ${initialIssue}. Waiting 1s to retry...`);
+  retryLogs.push(
+    `[Attempt 1] Temporary failure: ${initialIssue}. Retrying up to ${MAX_RETRIES} times (2s, 4s delays; 50s max budget)...`
+  );
+  console.warn(`[Retry Engine] ${url} failed temporarily: ${initialIssue}. Retrying...`);
 
   let lastResult = firstAttempt;
   let completedRetries = 0;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const delayMs = RETRY_DELAYS_MS[attempt - 1] ?? 4000;
     const elapsedMs = Date.now() - auditStartTime;
-    if (elapsedMs + RETRY_WAIT_MS >= TOTAL_TIMER_MS) {
-      retryLogs.push(`[Timer - 30s] 30-second req/resp timer reached (${(elapsedMs / 1000).toFixed(1)}s). Stopping retries.`);
+    if (elapsedMs + delayMs >= TOTAL_BUDGET_MS) {
+      retryLogs.push(
+        `[Budget - 50s] Total retry budget reached (${(elapsedMs / 1000).toFixed(1)}s). Stopping retries.`
+      );
       break;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, RETRY_WAIT_MS));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     completedRetries = attempt;
 
     const elapsedSec = ((Date.now() - auditStartTime) / 1000).toFixed(1);
@@ -1080,8 +1310,8 @@ export async function auditPage(
         retryResult.errors.length === 0;
 
       if (isRetryPassing) {
-        retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] SUCCESS: Double-check passed! Page recovered.`);
-        console.log(`[Retry Engine] ${url} recovered successfully on Retry ${attempt} (${elapsedSec}s)!`);
+        retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] SUCCESS: Page recovered.`);
+        console.log(`[Retry Engine] ${url} recovered on Retry ${attempt} (${elapsedSec}s)!`);
 
         return {
           ...retryResult,
@@ -1096,18 +1326,27 @@ export async function auditPage(
       const retryIssue = retryResult.errors.slice(0, 2).join('; ') || 'Still failing';
       retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] Failed: ${retryIssue}`);
       lastResult = retryResult;
+
+      if (!isRetryableFailure(retryResult)) {
+        retryLogs.push(`[Retry ${attempt}] Permanent error encountered; stopping further retries.`);
+        break;
+      }
     } catch (retryErr: any) {
       retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] Error during execution: ${retryErr.message}`);
     }
   }
 
-  // All 3 retries failed (or 30s timer expired) -> Confirmed error triggered!
   const totalSec = ((Date.now() - auditStartTime) / 1000).toFixed(1);
-  retryLogs.push(`[Final - ${totalSec}s] All ${completedRetries} retries failed. Confirmed error triggered for report & email.`);
-  console.error(`[Retry Engine] ${url} failed after ${completedRetries} retries (${totalSec}s). Final error triggered!`);
+  retryLogs.push(`[Final - ${totalSec}s] Failed after ${completedRetries} retry attempt(s). Confirmed error triggered.`);
+  console.error(`[Retry Engine] ${url} failed after ${completedRetries} retries (${totalSec}s).`);
 
-  lastResult.errors.push(`Request failed after ${completedRetries} retries (${totalSec}s total).`);
-  lastResult.summary = !lastResult.isAvailable || (lastResult.statusCode !== null && lastResult.statusCode >= 400) ? 'FAIL' : 'WARNING';
+  lastResult.errors.push(`Request failed after ${completedRetries} retry attempt(s) (${totalSec}s total).`);
+  lastResult.summary =
+    !lastResult.isAvailable || (lastResult.statusCode !== null && lastResult.statusCode >= 400)
+      ? 'FAIL'
+      : 'WARNING';
+  lastResult.auditStatus = lastResult.summary === 'FAIL' ? 'FAILED' : 'WARNING';
+  lastResult.failureReason = lastResult.errors[0];
 
   return {
     ...lastResult,
@@ -1115,4 +1354,108 @@ export async function auditPage(
     retryLogs,
     finalErrorTriggered: true,
   };
+}
+
+/**
+ * Audits multiple monitored targets with controlled concurrency (max 3 concurrently),
+ * a single shared Chromium browser, and an execution deadline (default 100s inside 120s API limit).
+ * If the deadline is approached, remaining targets are marked SKIPPED so partial results are saved.
+ */
+export async function auditTargetsWithDeadline(
+  targets: Array<{ id: string; url: string; name: string; expectedRazorpayLink?: string }>,
+  defaultRazorpayLink: string,
+  options?: { concurrency?: number; deadlineMs?: number; maxRetries?: number },
+  onTargetCompleted?: (targetId: string, result: PageAuditResult) => Promise<void> | void
+): Promise<PageAuditResult[]> {
+  const concurrency = options?.concurrency ?? 3;
+  const deadlineMs = options?.deadlineMs ?? 100000;
+  const maxRetries = options?.maxRetries ?? 2;
+  const batchStart = Date.now();
+
+  const results: PageAuditResult[] = [];
+  const queue = [...targets];
+  const sharedBrowser = await launchAuditBrowser();
+
+  try {
+    const worker = async () => {
+      while (queue.length > 0) {
+        const target = queue.shift();
+        if (!target) break;
+
+        if (Date.now() - batchStart >= deadlineMs) {
+          results.push({
+            id: `audit-skipped-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            url: target.url,
+            pageName: target.name,
+            checkedAt: new Date().toISOString(),
+            isAvailable: false,
+            statusCode: null,
+            statusText: 'Skipped (Execution deadline approaching)',
+            isStatusValid: false,
+            loadTimeMs: 0,
+            expectedRazorpayLink: target.expectedRazorpayLink || defaultRazorpayLink,
+            crawledPages: [target.url],
+            totalButtonsFound: 0,
+            matchingButtonsCount: 0,
+            mismatchButtonsCount: 0,
+            buttons: [],
+            errors: ['Skipped because execution deadline was approaching; partial audit saved.'],
+            summary: 'WARNING',
+            auditStatus: 'SKIPPED',
+            errorCategory: 'SKIPPED',
+            failureReason: 'Execution deadline approaching',
+            retryCount: 0,
+          });
+          continue;
+        }
+
+        try {
+          const expectedRzp = target.expectedRazorpayLink || defaultRazorpayLink;
+          const res = await auditPage(target.url, expectedRzp, target.name, {
+            browser: sharedBrowser,
+            maxRetries,
+          });
+          results.push(res);
+          if (onTargetCompleted) {
+            await onTargetCompleted(target.id, res);
+          }
+        } catch (err: any) {
+          console.error(`[Audit Batch] Error auditing ${target.url}:`, err);
+          results.push({
+            id: `audit-err-${Date.now()}`,
+            url: target.url,
+            pageName: target.name,
+            checkedAt: new Date().toISOString(),
+            isAvailable: false,
+            statusCode: null,
+            statusText: err.message || 'Audit exception',
+            isStatusValid: false,
+            loadTimeMs: 0,
+            expectedRazorpayLink: target.expectedRazorpayLink || defaultRazorpayLink,
+            crawledPages: [target.url],
+            totalButtonsFound: 0,
+            matchingButtonsCount: 0,
+            mismatchButtonsCount: 0,
+            buttons: [],
+            errors: [err.message || 'Unexpected crawler error'],
+            summary: 'FAIL',
+            auditStatus: 'FAILED',
+            errorCategory: 'NETWORK',
+            failureReason: err.message || 'Unexpected crawler error',
+            retryCount: 0,
+          });
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(concurrency, Math.max(targets.length, 1)) },
+      () => worker()
+    );
+    await Promise.all(workers);
+  } finally {
+    await sharedBrowser.close().catch(() => {});
+  }
+
+  return results;
 }

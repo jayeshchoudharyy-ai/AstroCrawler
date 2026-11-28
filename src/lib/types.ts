@@ -71,9 +71,14 @@ export interface PageAuditResult {
   buttons: ButtonAudit[];
   errors: string[];
   summary: 'PASS' | 'WARNING' | 'FAIL';
-  retryCount?: number; // 0 if passed initially, 1-3 if retried
+  auditStatus?: 'PASSED' | 'SLOW' | 'FAILED' | 'WARNING' | 'SKIPPED';
+  errorCategory?: 'NONE' | 'NETWORK' | 'TIMEOUT' | 'HTTP_ERROR' | 'BUTTON_MISMATCH' | 'COUNTDOWN_ERROR' | 'SCRIPT_ERROR' | 'SKIPPED';
+  failureReason?: string;
+  consoleErrors?: string[];
+  screenshotBase64?: string;
+  retryCount?: number; // 0 if passed initially, 1-2 if retried
   retryLogs?: string[];
-  finalErrorTriggered?: boolean; // true after 30s failure
+  finalErrorTriggered?: boolean;
 }
 
 export interface AuditReport {

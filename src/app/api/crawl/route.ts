@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auditPage, launchAuditBrowser } from '@/lib/crawler';
+import { auditPage, auditTargetsWithDeadline } from '@/lib/crawler';
 import { getTargets, addTarget, updateTarget, saveReport, getSettings } from '@/lib/store';
 import { sendAuditReportEmail } from '@/lib/email';
 import { PageAuditResult, AuditReport } from '@/lib/types';
@@ -39,34 +39,22 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const sharedBrowser = await launchAuditBrowser();
-      try {
-        for (const target of targets) {
-          try {
-            const res = await auditPage(
-              target.url,
-              target.expectedRazorpayLink || defaultRzp,
-              target.name,
-              { browser: sharedBrowser, maxRetries: 3 }
-            );
-            results.push(res);
-
-            // Update target status in store
-            await updateTarget(target.id, {
-              lastCheckedAt: res.checkedAt,
-              lastStatus: res.statusCode,
-              lastSummary: res.summary,
-              lastButtonsCount: res.totalButtonsFound,
-              lastMatchingCount: res.matchingButtonsCount,
-              lastLoadTimeMs: res.loadTimeMs,
-            });
-          } catch (itemErr: any) {
-            console.error(`Error auditing ${target.url}:`, itemErr);
-          }
+      const batchResults = await auditTargetsWithDeadline(
+        targets,
+        defaultRzp,
+        { concurrency: 3, deadlineMs: 100000, maxRetries: 2 },
+        async (targetId, res) => {
+          await updateTarget(targetId, {
+            lastCheckedAt: res.checkedAt,
+            lastStatus: res.statusCode,
+            lastSummary: res.summary,
+            lastButtonsCount: res.totalButtonsFound,
+            lastMatchingCount: res.matchingButtonsCount,
+            lastLoadTimeMs: res.loadTimeMs,
+          });
         }
-      } finally {
-        await sharedBrowser.close().catch(() => {});
-      }
+      );
+      results.push(...batchResults);
     } else {
       // Audit single target on the fly
       if (!url) {

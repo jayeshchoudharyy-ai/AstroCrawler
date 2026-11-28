@@ -90,7 +90,7 @@ export default function Home() {
     setIsRunningAll(true);
     setBannerNotice(null);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000);
+    const timeoutId = setTimeout(() => controller.abort(), 130000);
     try {
       const res = await fetch('/api/crawl', {
         method: 'POST',
