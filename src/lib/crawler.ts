@@ -278,8 +278,8 @@ async function safelyClickAndCaptureRedirect(
       };
     });
 
-    // Navigate to page (10s request timeout)
-    await clickPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    // Navigate to page
+    await clickPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
     // Locate candidate buttons on the page
     const buttons = clickPage.locator(
@@ -595,8 +595,8 @@ export async function launchAuditBrowser(): Promise<Browser> {
 }
 
 const SLOW_LOAD_THRESHOLD_MS = 5000;
-const MAIN_NAV_TIMEOUT_MS = 10000; // 10s request timeout
-const SUBPAGE_NAV_TIMEOUT_MS = 10000; // 10s subpage request timeout
+const MAIN_NAV_TIMEOUT_MS = 20000;
+const SUBPAGE_NAV_TIMEOUT_MS = 25000;
 const MAX_SUBPAGES_TO_CRAWL = 6;
 const SUBPAGE_CONCURRENCY = 3;
 
@@ -1217,9 +1217,9 @@ export async function auditPageOnce(
 
 /**
  * Main Audit Page with Intelligent Retry Mechanism:
- * - Per-request timeout: 10s.
+ * - Main page nav timeout: 20s, subpage nav timeout: 25s.
  * - Max 2 retries after initial attempt with 2s and 4s delays.
- * - Max total response/retry budget: 60 seconds per page.
+ * - Max total retry budget: 50 seconds per page.
  * - Retries temporary network failures, timeouts, HTTP 429, 500, 502, 503, 504.
  * - Does NOT retry permanent errors (invalid URLs, HTTP 400, 401, 403, 404).
  */
@@ -1230,7 +1230,7 @@ export async function auditPage(
   options?: { singlePageOnly?: boolean; browser?: Browser; maxRetries?: number }
 ): Promise<PageAuditResult> {
   const auditStartTime = Date.now();
-  const TOTAL_BUDGET_MS = 60000; // 60-second response/retry budget per page
+  const TOTAL_BUDGET_MS = 50000; // 50-second max retry budget per page
   const RETRY_DELAYS_MS = [2000, 4000]; // 2s then 4s
   const MAX_RETRIES = options?.maxRetries ?? 2;
 
@@ -1278,7 +1278,7 @@ export async function auditPage(
   }
 
   retryLogs.push(
-    `[Attempt 1] Temporary failure: ${initialIssue}. Retrying up to ${MAX_RETRIES} times (2s, 4s delays; 60s max response budget)...`
+    `[Attempt 1] Temporary failure: ${initialIssue}. Retrying up to ${MAX_RETRIES} times (2s, 4s delays; 50s max budget)...`
   );
   console.warn(`[Retry Engine] ${url} failed temporarily: ${initialIssue}. Retrying...`);
 
@@ -1290,7 +1290,7 @@ export async function auditPage(
     const elapsedMs = Date.now() - auditStartTime;
     if (elapsedMs + delayMs >= TOTAL_BUDGET_MS) {
       retryLogs.push(
-        `[Budget - 60s] Total response budget reached (${(elapsedMs / 1000).toFixed(1)}s). Stopping retries.`
+        `[Budget - 50s] Total retry budget reached (${(elapsedMs / 1000).toFixed(1)}s). Stopping retries.`
       );
       break;
     }
