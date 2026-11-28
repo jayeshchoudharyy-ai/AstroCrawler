@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
               target.url,
               target.expectedRazorpayLink || defaultRzp,
               target.name,
-              { browser: sharedBrowser, maxRetries: 1 }
+              { browser: sharedBrowser, maxRetries: 3 }
             );
             results.push(res);
 

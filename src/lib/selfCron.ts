@@ -212,7 +212,7 @@ export async function executeSelfCron(trigger: 'cron' | 'manual' = 'cron'): Prom
           const expectedRzp = target.expectedRazorpayLink || defaultRzp;
           const res = await auditPage(target.url, expectedRzp, target.name, {
             browser: sharedBrowser,
-            maxRetries: 1,
+            maxRetries: 3,
           });
           results.push(res);
 

@@ -593,7 +593,7 @@ export async function auditPageOnce(
     try {
       const navigationResponse = await mainPage.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 15000,
+        timeout: 10000,
       });
 
       if (navigationResponse) {
@@ -998,11 +998,10 @@ export async function auditPageOnce(
 }
 
 /**
- * Main Audit Page with Double-Check Retry Mechanism:
- * - Runs initial check (Attempt 1).
- * - If check fails (status not 200/301, page down, or buttons mismatch):
- *   - Runs retry every 10 seconds.
- *   - If still failing after 30 seconds (3 retries), triggers confirmed error!
+ * Main Audit Page with 30s Request/Response Timer & Retry Mechanism:
+ * - Each request has a 10-second timeout.
+ * - If a request fails, waits 1 second and sends another request (up to 3 retries within the 30s timer).
+ * - Only if it still fails after 3 retries (or 30s total timer) is the error triggered.
  */
 export async function auditPage(
   url: string,
@@ -1010,9 +1009,14 @@ export async function auditPage(
   pageName?: string,
   options?: { singlePageOnly?: boolean; browser?: Browser; maxRetries?: number }
 ): Promise<PageAuditResult> {
+  const auditStartTime = Date.now();
+  const TOTAL_TIMER_MS = 30000; // 30-second total req/resp timer
+  const RETRY_WAIT_MS = 1000;   // 1-second wait before next request
+  const MAX_RETRIES = options?.maxRetries ?? 3; // 3 retries
+
   const retryLogs: string[] = [];
 
-  // Attempt 1 (Initial)
+  // Attempt 1 (Initial 10s request)
   const firstAttempt = await auditPageOnce(url, expectedRazorpayLink, pageName, options);
 
   const isFirstPassing =
@@ -1037,10 +1041,9 @@ export async function auditPage(
     };
   }
 
-  // Attempt 1 failed -> Begin retry loop
-  const maxRetries = options?.maxRetries ?? 3;
+  // Attempt 1 failed -> Wait 1s and retry up to 3 times within the 30s timer
   const initialIssue = firstAttempt.errors.slice(0, 2).join('; ') || 'Issues detected on page';
-  if (maxRetries === 0) {
+  if (MAX_RETRIES === 0) {
     return {
       ...firstAttempt,
       retryCount: 0,
@@ -1049,19 +1052,24 @@ export async function auditPage(
     };
   }
 
-  retryLogs.push(`[Attempt 1 - 0s] Initial check failed: ${initialIssue}. Initiating double-check retry loop (every 10s up to ${maxRetries * 10}s)...`);
-  console.warn(`[Retry Engine] ${url} failed initial check: ${initialIssue}. Double-checking in 10s...`);
+  retryLogs.push(`[Attempt 1] 10s request failed: ${initialIssue}. Waiting 1s before retry (up to ${MAX_RETRIES} retries / 30s timer)...`);
+  console.warn(`[Retry Engine] ${url} failed initial check: ${initialIssue}. Waiting 1s to retry...`);
 
   let lastResult = firstAttempt;
-  const RETRY_INTERVAL_MS = 10000; // 10 seconds
-  const MAX_RETRIES = maxRetries;
+  let completedRetries = 0;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const elapsedSeconds = attempt * 10;
+    const elapsedMs = Date.now() - auditStartTime;
+    if (elapsedMs + RETRY_WAIT_MS >= TOTAL_TIMER_MS) {
+      retryLogs.push(`[Timer - 30s] 30-second req/resp timer reached (${(elapsedMs / 1000).toFixed(1)}s). Stopping retries.`);
+      break;
+    }
 
-    await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, RETRY_WAIT_MS));
+    completedRetries = attempt;
 
-    console.log(`[Retry Engine] Running Retry Attempt ${attempt} at ${elapsedSeconds}s for ${url}...`);
+    const elapsedSec = ((Date.now() - auditStartTime) / 1000).toFixed(1);
+    console.log(`[Retry Engine] Sending Retry ${attempt}/${MAX_RETRIES} at ${elapsedSec}s for ${url}...`);
     try {
       const retryResult = await auditPageOnce(url, expectedRazorpayLink, pageName, options);
 
@@ -1072,8 +1080,8 @@ export async function auditPage(
         retryResult.errors.length === 0;
 
       if (isRetryPassing) {
-        retryLogs.push(`[Retry ${attempt} - ${elapsedSeconds}s] SUCCESS: Double-check passed! Page recovered.`);
-        console.log(`[Retry Engine] ${url} recovered successfully on Retry ${attempt} (${elapsedSeconds}s)!`);
+        retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] SUCCESS: Double-check passed! Page recovered.`);
+        console.log(`[Retry Engine] ${url} recovered successfully on Retry ${attempt} (${elapsedSec}s)!`);
 
         return {
           ...retryResult,
@@ -1086,23 +1094,24 @@ export async function auditPage(
       }
 
       const retryIssue = retryResult.errors.slice(0, 2).join('; ') || 'Still failing';
-      retryLogs.push(`[Retry ${attempt} - ${elapsedSeconds}s] Failed: ${retryIssue}`);
+      retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] Failed: ${retryIssue}`);
       lastResult = retryResult;
     } catch (retryErr: any) {
-      retryLogs.push(`[Retry ${attempt} - ${elapsedSeconds}s] Error during execution: ${retryErr.message}`);
+      retryLogs.push(`[Retry ${attempt} - ${elapsedSec}s] Error during execution: ${retryErr.message}`);
     }
   }
 
-  // 30 seconds elapsed (3 retries completed) -> Error is officially triggered!
-  retryLogs.push(`[Final - 30s] 30-second double-check timer expired. Confirmed error triggered for report & email.`);
-  console.error(`[Retry Engine] ${url} failed all retries over 30s. Final error triggered!`);
+  // All 3 retries failed (or 30s timer expired) -> Confirmed error triggered!
+  const totalSec = ((Date.now() - auditStartTime) / 1000).toFixed(1);
+  retryLogs.push(`[Final - ${totalSec}s] All ${completedRetries} retries failed. Confirmed error triggered for report & email.`);
+  console.error(`[Retry Engine] ${url} failed after ${completedRetries} retries (${totalSec}s). Final error triggered!`);
 
-  lastResult.errors.push(`Double-check retry failed: Page still had errors after 3 retries over 30 seconds.`);
+  lastResult.errors.push(`Request failed after ${completedRetries} retries (${totalSec}s total).`);
   lastResult.summary = !lastResult.isAvailable || (lastResult.statusCode !== null && lastResult.statusCode >= 400) ? 'FAIL' : 'WARNING';
 
   return {
     ...lastResult,
-    retryCount: MAX_RETRIES,
+    retryCount: completedRetries,
     retryLogs,
     finalErrorTriggered: true,
   };
